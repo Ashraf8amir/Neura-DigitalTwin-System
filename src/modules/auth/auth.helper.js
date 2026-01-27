@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { generateState, generateCodeVerifier } = require('arctic');
+const { generateState, generateCodeVerifier } = await require('arctic');
 const AppError = require('../../core/appError.js');
 const httpStatus = require('../../core/httpStatus.js');
 const config = require('../../config/config');
