@@ -1,4 +1,5 @@
 const joi = require("joi");
+const constants = require("../../shared/constants/enums");
 
 exports.updateBasicInfoSchema = (data) => {
     const updateBasicInfoSchema = joi.object({
@@ -80,4 +81,75 @@ exports.addAwardSchema = (data) => {
     });
 
     return addAwardSchema.validate(data, { abortEarly: false });
+}
+
+exports.setClinicInfoSchema = (data) => {
+    const setClinicInfoSchema = joi.object({
+        clinicName: joi.string().trim().min(2).max(200).required(),
+        phone: joi.string().pattern(/^01[0-2,5]{1}[0-9]{8}$/).required()
+            .messages({ 'string.pattern.base': 'Phone number must be a valid Egyptian phone number' }),
+        isPrimary: joi.boolean().optional(),
+        address: joi.object({
+            governorate: joi.string().trim().min(2).max(100).required(),
+            city: joi.string().trim().min(2).max(100).required(),
+            street: joi.string().trim().min(2).max(200).required(),
+            buildingNumber: joi.string().trim().min(1).max(50).optional(),
+            floor: joi.string().trim().min(1).max(50).optional(),
+            landmark: joi.string().trim().min(2).max(200).optional()
+        }).required(),
+        location: joi.object({
+            type: joi.string().valid('Point').required(),
+            coordinates: joi.array().items(
+                joi.number().required()
+            ).length(2).required()
+        }).optional(),
+        availableHours: joi.array().items(
+            joi.object({
+                day: joi.string().valid(...Object.values(constants.DAYS_OF_WEEK)).required(),
+                startTime: joi.string().pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/).required()
+                    .messages({ 'string.pattern.base': 'Start time must be in HH:mm format' }),
+                endTime: joi.string().pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/).required()
+                    .messages({ 'string.pattern.base': 'End time must be in HH:mm format' }),
+            }).required()
+        ).required(),
+        consultationFee: joi.number().min(0).max(10000).required(),
+        followUpFee: joi.number().min(0).max(10000).required()
+    });
+
+    return setClinicInfoSchema.validate(data, { abortEarly: false });
+}
+exports.updateClinicInfoSchema = (data) => {
+    const updateClinicInfoSchema = joi.object({
+        clinicName: joi.string().trim().min(2).max(200).optional(),
+        phone: joi.string().pattern(/^01[0-2,5]{1}[0-9]{8}$/).optional()
+            .messages({ 'string.pattern.base': 'Phone number must be a valid Egyptian phone number' }),
+        isPrimary: joi.boolean().optional(),
+        address: joi.object({
+            governorate: joi.string().trim().min(2).max(100).optional(),
+            city: joi.string().trim().min(2).max(100).optional(),
+            street: joi.string().trim().min(2).max(200).optional(),
+            buildingNumber: joi.string().trim().min(1).max(50).optional(),
+            floor: joi.string().trim().min(1).max(50).optional(),
+            landmark: joi.string().trim().min(2).max(200).optional()
+        }).optional(),
+        location: joi.object({
+            type: joi.string().valid('Point').required(),
+            coordinates: joi.array().items(
+                joi.number().required()
+            ).length(2).required()
+        }).optional(),
+        availableHours: joi.array().items(
+            joi.object({
+                day: joi.string().valid(...Object.values(constants.DAYS_OF_WEEK)).required(),
+                startTime: joi.string().pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/).required()
+                    .messages({ 'string.pattern.base': 'Start time must be in HH:mm format' }),
+                endTime: joi.string().pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/).required()
+                    .messages({ 'string.pattern.base': 'End time must be in HH:mm format' }),
+            }).required()
+        ).optional(),
+        consultationFee: joi.number().min(0).max(10000).optional(),
+        followUpFee: joi.number().min(0).max(10000).optional()
+    }).min(1).messages({'object.min': 'At least one field must be provided for update'})
+
+    return updateClinicInfoSchema.validate(data, { abortEarly: false });
 }

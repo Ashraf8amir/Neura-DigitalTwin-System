@@ -73,11 +73,11 @@ router.post("/me/clinic-info",
     validateReq(doctorValidators.setClinicInfoSchema),
     doctorController.setClinicInfo
 );
-router.patch("/me/clinic-info",
+router.patch("/me/clinic-info/:clinicId",
   validateReq(doctorValidators.updateClinicInfoSchema),
   doctorController.updateClinicInfo
 );
-router.delete("/me/clinic-info",
+router.delete("/me/clinic-info/:clinicId",
   doctorController.deleteClinicInfo
 );
 

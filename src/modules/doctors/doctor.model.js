@@ -139,7 +139,10 @@ const doctorSchema = new mongoose.Schema({
       },
       location: {
         type: { type: String, default: 'Point' },
-        coordinates: { type: [Number], index: '2dsphere' } 
+        coordinates: { 
+          type: [Number], 
+          index: '2dsphere' 
+        } 
       },
       availableHours: [
       {
@@ -167,7 +170,7 @@ const doctorSchema = new mongoose.Schema({
           },
           required: true,
         },
-        _id: false,
+        _id: false
       },
       ],
       consultationFee: {

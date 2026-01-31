@@ -137,6 +137,47 @@ class DoctorService {
         return { IDDeleted: awardId };
     };
 
+    async getDoctorClinicInfo(doctorId) {
+        const doctor = await this.getDoctorById(doctorId);
+
+        return doctor.clinicInfo;
+    };
+    async setDoctorClinicInfo(doctorId, clinicInfoData){
+        const doctor = await this.getDoctorById(doctorId);
+
+        doctor.clinicInfo.push(clinicInfoData);
+        await doctor.save();    
+
+        return doctor.clinicInfo[doctor.clinicInfo.length - 1];
+    };
+    async updateDoctorClinicInfo(doctorId, clinicId, updateData){
+        const updatedFields = doctorHelper.buildPatchUpdate({ 
+                    data: updateData, basePath: 'clinicInfo.$'
+                });
+        const doctor = await Doctor.findOneAndUpdate(
+            { _id: doctorId, 'clinicInfo._id': clinicId },
+            updatedFields ,
+            { new: true, runValidators: true }
+        );
+
+        if (!doctor) throw new AppError(404, httpStatus.FAIL, 'Doctor not found');
+
+        return doctor.clinicInfo.find(clinic => clinic._id.toString() === clinicId);
+    };
+    async deleteDoctorClinicInfo(doctorId, clinicId){
+        const doctor = await Doctor.findOneAndUpdate(
+            { _id: doctorId},
+            { $pull: { clinicInfo: { _id: clinicId } } },
+            { new: true }
+        );
+
+        if (!doctor) throw new AppError(404, httpStatus.FAIL, 'Doctor not found');
+
+        return { IDDeleted: clinicId };
+    };
+
+
+
 }
 
 module.exports = new DoctorService();

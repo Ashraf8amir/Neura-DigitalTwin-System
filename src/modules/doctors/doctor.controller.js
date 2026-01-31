@@ -228,11 +228,11 @@ exports.setClinicInfo = asyncWrapper(async (req, res) => {
 });
 /**
     * @desc Update clinic info
-    * @route PATCH /api/v1/doctors/me/clinic-info
+    * @route PATCH /api/v1/doctors/me/clinic-info/:clinicId
     * @access Private (Doctor)
 */
 exports.updateClinicInfo = asyncWrapper(async (req, res) => {
-    const updatedClinicInfo = await service.updateDoctorClinicInfo(req.user.id, req.body);
+    const updatedClinicInfo = await service.updateDoctorClinicInfo(req.user.id, req.params.clinicId, req.body);
 
     return new ApiResponse(
         res,
@@ -244,12 +244,11 @@ exports.updateClinicInfo = asyncWrapper(async (req, res) => {
 });
 /**
     * @desc Delete clinic info
-    * @route DELETE /api/v1/doctors/me/clinic-info
+    * @route DELETE /api/v1/doctors/me/clinic-info/:clinicId
     * @access Private (Doctor)
 */
 exports.deleteClinicInfo = asyncWrapper(async (req, res) => {
-    const deletedClinicInfo = await service.deleteDoctorClinicInfo(req.user.id);
-
+    const deletedClinicInfo = await service.deleteDoctorClinicInfo(req.user.id, req.params.clinicId);
     return new ApiResponse(
         res,
         200,
