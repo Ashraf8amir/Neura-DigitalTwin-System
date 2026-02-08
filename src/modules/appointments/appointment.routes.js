@@ -15,5 +15,21 @@ router.post('/',
     validateReq(appointmentValidators.createAppointmentSchema),
     appointmentController.createAppointment
 );
+router.get('/',
+    authorizeRoles(ROLE.PATIENT, ROLE.DOCTOR, ROLE.ADMIN),
+    appointmentController.getAllAppointments
+);
+router.get('/count',
+    authorizeRoles(ROLE.PATIENT, ROLE.DOCTOR, ROLE.ADMIN),
+    appointmentController.countAppointments
+);
+router.get('/statistics',
+    authorizeRoles(ROLE.PATIENT, ROLE.DOCTOR, ROLE.ADMIN),
+    appointmentController.getAppointmentStatistics
+);
+router.get('/search',
+    authorizeRoles(ROLE.PATIENT, ROLE.DOCTOR, ROLE.ADMIN),
+    appointmentController.searchAppointments
+)
 
 module.exports = router;

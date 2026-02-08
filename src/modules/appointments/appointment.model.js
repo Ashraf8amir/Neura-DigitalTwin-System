@@ -80,7 +80,7 @@ const appointmentSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['pending', 'confirmed', 'checked-in', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'],
+        values: ['pending', 'confirmed', 'checked-in', 'in-progress', 'completed', 'cancelled', 'rescheduled'],
         message: '{VALUE} is not a valid status'
       },
       default: 'pending',
@@ -433,6 +433,7 @@ const appointmentSchema = new mongoose.Schema(
   }
 );
 
+
 appointmentSchema.index({ scheduledDate: 1, 'scheduledTime.startTime': 1 });
 appointmentSchema.index({ patient: 1, scheduledDate: -1 });
 appointmentSchema.index({ doctor: 1, scheduledDate: 1, status: 1 });
@@ -620,8 +621,10 @@ const transformFn = (doc, ret) => {
             fullName: ret.doctor.fullName, 
             age: ret.doctor.age,
             primarySpecialization: ret.doctor.professionalInfo?.primarySpecialization,
+            rating: ret.doctor.rating
         };
     }
+    
 
     delete ret._id;
     delete ret.__v;
@@ -636,6 +639,7 @@ const transformFn = (doc, ret) => {
 
 appointmentSchema.set('toJSON', { virtuals: true, transform: transformFn });
 appointmentSchema.set('toObject', { virtuals: true, transform: transformFn });
+
 
 const Appointment = mongoose.model('Appointment', appointmentSchema);
 
