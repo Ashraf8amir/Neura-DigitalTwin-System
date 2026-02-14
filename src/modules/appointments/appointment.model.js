@@ -441,24 +441,21 @@ appointmentSchema.index({ doctor: 1, scheduledDate: 1, 'scheduledTime.startTime'
 
 
 appointmentSchema.virtual('isUpcoming').get(function() {
-  return this.scheduledDate > new Date() && ['pending', 'confirmed'].includes(this.status);
+  return this.scheduledDate > new Date() && [appointmentConstants.APPOINTMENT_STATUSES.PENDING, appointmentConstants.APPOINTMENT_STATUSES.CONFIRMED].includes(this.status);
 });
 
 appointmentSchema.virtual('isPast').get(function() {
   return this.scheduledDate < new Date();
 });
 
-appointmentSchema.virtual('canBeCancelled').get(function() {
-  const hoursDifference = (this.scheduledDate - new Date()) / (1000 * 60 * 60);
-  return hoursDifference > 24 && ['pending', 'confirmed'].includes(this.status);
-});
-
 appointmentSchema.virtual('canBeRescheduled').get(function() {
+  const threshold = this.doctor?.settings?.rescheduleThreshold || 12;
+
   const hoursDifference = (this.scheduledDate - new Date()) / (1000 * 60 * 60);
-  return hoursDifference > 12 && ['pending', 'confirmed'].includes(this.status);
+
+  return hoursDifference >= threshold;
 });
 
-// ==================== PRE HOOKS ====================
 appointmentSchema.pre(/^find/, async function() {
   this.find({ isDeleted: { $ne: true } });
 });
@@ -488,18 +485,43 @@ appointmentSchema.pre('save', async function() {
   }
 });
 
-// ==================== METHODS ====================
-appointmentSchema.methods.cancel = function(userId, reason) {
-  this.status = appointmentConstants.APPOINTMENT_STATUSES.CANCELLED;
+appointmentSchema.methods.cancel = async function(userId, role, reason, userDocument, refundPercentage, options = {}) {
+  const { APPOINTMENT_STATUSES } = appointmentConstants;
+  const hoursDifference = (this.scheduledDate - new Date()) / (1000 * 60 * 60);
+  let pointsToAdd = 0;
+
+  if (role === 'patient') {
+    if (hoursDifference < 12) {
+      pointsToAdd = this.payment.paid ? 1 : 3;
+    }
+
+    if (pointsToAdd > 0 && userDocument) {
+      userDocument.blacklist.blacklistPoints += pointsToAdd;
+      userDocument.blacklist.consecutiveSuccessiveAppointments = 0;
+      
+      if (userDocument.blacklist.blacklistPoints >= 10) {
+        userDocument.blacklist.isBlocked = true;
+        userDocument.blacklist.reason = 'Exceeded maximum cancellation points';
+        userDocument.blacklist.blockedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      }
+      await userDocument.save(options);
+    }
+  }
+
   this.cancellation = {
     cancelledBy: userId,
     cancelledAt: new Date(),
-    cancellationReason: reason
+    cancellationReason: reason,
+    refundAmount: Math.round((this.payment.totalAmount * refundPercentage) * 100) / 100,
+    refundStatus: this.payment.paid ? appointmentConstants.REFUND_STATUSES.PENDING : appointmentConstants.REFUND_STATUSES.NOT_APPLICABLE
   };
-  return this.save();
+
+  this.status = APPOINTMENT_STATUSES.CANCELLED;
+
+  return this.save(options);
 };
 
-appointmentSchema.methods.reschedule = function(userId, newDate, newTime, reason) {
+appointmentSchema.methods.reschedule = function(userId, newDate, newTime, reason, options = {}) {
   this.rescheduling = {
     rescheduledBy: userId,
     rescheduledAt: new Date(),
@@ -511,9 +533,11 @@ appointmentSchema.methods.reschedule = function(userId, newDate, newTime, reason
   
   this.scheduledDate = newDate;
   this.scheduledTime = newTime;
-  this.status = appointmentConstants.APPOINTMENT_STATUSES.RESCHEDULED;
+  if (options.newClinicData) {
+    this.clinic = options.newClinicData;
+  }
   
-  return this.save();
+  return this.save(options);
 };
 
 appointmentSchema.methods.performCheckIn = function(userId, queueNumber) {

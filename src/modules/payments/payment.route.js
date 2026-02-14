@@ -13,6 +13,6 @@ router.post('/callback',
 router.get('/success',
     paymentController.paymentSuccess
 );
-router.get('/cancel',
-    paymentController.paymentCancel
-);
+
+
+module.exports = router;

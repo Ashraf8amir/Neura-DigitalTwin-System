@@ -44,6 +44,7 @@ const ENUMS = Object.freeze({
       ACTIVE: 'active',
       SUSPENDED: 'suspended',
       PENDING_VERIFICATION: 'pending_verification',
+      BLOCKED: 'blocked',
       INCOMPLETE: 'incomplete',
       REJECTED: 'rejected'
   },

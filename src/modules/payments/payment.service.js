@@ -6,6 +6,7 @@ const { appointmentConstants } = require('../appointments/appointment.constant')
 const User = require('../../shared/models/user.model');
 const Appointment = require('../appointments/appointment.model');
 const { ROLE } = require('../../shared/constants/enums.js');
+const logger = require('../../core/logger.js');
 
 
 class PaymentService {
@@ -104,6 +105,101 @@ class PaymentService {
             paymentId: payment._id,
             status: payment.status
         };
+    }
+
+    async _handleRefundLogic(payment, processedData, callbackData) {
+        if (payment.status === paymentConstants.STATUS.REFUNDED) {
+            logger.info(`Payment for order ${processedData.orderId} is already REFUNDED. Skipping.`);
+            return payment;
+        }
+
+        const relatedServices = ['appointment', 'nursingService', 'medicineOrder'];
+
+        if (processedData.success) {
+            payment.status = paymentConstants.STATUS.REFUNDED;
+            payment.refund.refundedAt = new Date();
+
+            for (const serviceKey of relatedServices) {
+                const serviceDoc = payment[serviceKey];
+
+                if (serviceDoc) {
+                    serviceDoc.payment.paid = false;
+                    serviceDoc.payment.paidAt = null;
+
+                    if (serviceKey === 'appointment' && serviceDoc.cancellation) {
+                        serviceDoc.cancellation.refundStatus = appointmentConstants.REFUND_STATUSES.APPROVED;
+                    }
+
+                    await serviceDoc.save();
+                }
+            }
+        } else {
+            payment.status = paymentConstants.STATUS.REFUND_FAILED; 
+            payment.error.message = callbackData.data?.message || 'Refund rejected by provider';
+
+            if (payment.appointment && payment.appointment.cancellation) {
+                payment.appointment.cancellation.refundStatus = appointmentConstants.REFUND_STATUSES.REJECTED;
+                await payment.appointment.save();
+            }
+        }
+
+        await payment.save();
+        return payment;
+    }
+
+    async _handlePaymentLogic(payment, processedData, callbackData) {
+        if (payment.status === paymentConstants.STATUS.COMPLETED) {
+            logger.log(`Payment for order ${processedData.orderId} is already COMPLETED. Skipping duplicate callback.`);
+            return payment;
+        }
+
+        payment.paymob.transactionId = processedData.transactionId;
+        payment.paymob.response = callbackData;
+
+        if (processedData.success && !processedData.pending) {
+            payment.status = paymentConstants.STATUS.COMPLETED;
+            payment.paidAt = new Date();
+
+            const services = ['appointment', 'nursingService', 'medicineOrder'];
+            for (const service of services) {
+                if (payment[service]) {
+                    payment[service].payment.paid = true;
+                    payment[service].payment.paidAt = new Date();
+                    payment[service].status = appointmentConstants.APPOINTMENT_STATUSES.CONFIRMED;
+
+                    await payment[service].save();
+                }
+            }
+        } else if (processedData.pending) {
+            payment.status = paymentConstants.STATUS.PROCESSING;
+        } else {
+            payment.status = paymentConstants.STATUS.FAILED;
+            payment.failedAt = new Date();
+            payment.error.message = callbackData.data?.message || 'Payment failed';
+        }
+
+        await payment.save();
+        return payment;
+    }
+
+    async handlePaymobCallbackService(callbackData) {
+        const processedData = paymob.processCallback(callbackData);
+
+        const payment = await Payment.findOne({
+            'paymob.orderId': processedData.orderId
+        }).populate('appointment nursingService medicineOrder');
+
+        if (!payment) {
+            throw new AppError(404, httpStatus.FAIL, 'Payment not found');
+        }
+
+        const isRefundAction = callbackData.obj?.is_refund === true || callbackData.obj?.type === 'REFUND';
+
+        if (isRefundAction) {
+            return await this._handleRefundLogic(payment, processedData, callbackData);
+        }
+
+        return await this._handlePaymentLogic(payment, processedData, callbackData);
     }
 
     async initiateAppointmentPaymentService(patientId, appointmentId, paymentMethod, amount) {
@@ -231,51 +327,36 @@ class PaymentService {
         };
     }
 
-    async handlePaymobCallbackService(callbackData) {
-        const processedData = paymob.processCallback(callbackData);
-
-        const payment = await Payment.findOne({
-            'paymob.orderId': processedData.orderId
-        }).populate('appointment nursingService medicineOrder');
+    async refundPaymentService(paymentId, userId, refundPercentage, reason='No reason provided', options = {}) {
+        const payment = await Payment.findById(paymentId);
 
         if (!payment) {
             throw new AppError(404, httpStatus.FAIL, 'Payment not found');
         }
 
-        payment.paymob.transactionId = processedData.transactionId;
-        payment.paymob.response = callbackData;
-
-        if (processedData.success && !processedData.pending) {
-            payment.status = paymentConstants.STATUS.COMPLETED;
-            payment.paidAt = new Date();
-
-            if (payment.appointment) {
-                payment.appointment.payment.paid = true;
-                payment.appointment.payment.paidAt = new Date();
-                payment.appointment.status = appointmentConstants.APPOINTMENT_STATUSES.CONFIRMED;
-                await payment.appointment.save();
-            }
-            if (payment.nursingService) {
-                payment.nursingService.payment.paid = true;
-                payment.nursingService.payment.paidAt = new Date();
-                await payment.nursingService.save();
-            }
-            if (payment.medicineOrder) {
-                payment.medicineOrder.payment.paid = true;
-                payment.medicineOrder.payment.paidAt = new Date();
-                await payment.medicineOrder.save();
-            }
-        } else if (processedData.pending) {
-            payment.status = paymentConstants.STATUS.PROCESSING;
-        } else {
-            payment.status = paymentConstants.STATUS.FAILED;
-            payment.failedAt = new Date();
-            payment.error.message = 'Payment failed';
+        if (payment.status !== paymentConstants.STATUS.COMPLETED) {
+            throw new AppError(400, httpStatus.FAIL, 'Only completed payments can be refunded');
         }
 
-        await payment.save();
-        return payment;
+        if (payment.refund?.refundId) {
+            throw new AppError(400, httpStatus.FAIL, 'Payment already refunded');
+        }
+
+        const refundResponse = await paymob.refundTransaction(payment.paymobTransactionId, refundPercentage, payment.amount.total);
+
+        payment.status = paymentConstants.STATUS.REFUNDED_IN_PROCESS;
+        payment.refund = {
+            refundId: refundResponse.refundId,
+            amount: Math.round(refundPercentage * payment.amount.total * 100) / 100,
+            reason: reason,
+            refundedAt: new Date(),
+            refundedBy: userId
+        };
+        await payment.save(options);
+
+        return payment.refund;
     }
+    
 }
 
 module.exports = new PaymentService();

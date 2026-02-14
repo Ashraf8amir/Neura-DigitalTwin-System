@@ -131,7 +131,6 @@ class PaymobService {
         }
     }
 
-
     processCallback(callbackData) {
         const isValid = this.verifyCallback(callbackData);
         
@@ -155,14 +154,14 @@ class PaymobService {
         };
     }
 
-    async refundTransaction(transactionId, amount) {
+    async refundTransaction(transactionId, refundPercentage=1, amount) {
         try {
             const authToken = await this.authenticate();
 
             const response = await axios.post(`${PAYMOB_BASE_URL}/acceptance/void_refund/refund`, {
                 auth_token: authToken,
                 transaction_id: transactionId,
-                amount_cents: amount * 100
+                amount_cents: Math.round((refundPercentage * amount) * 100)
             });
 
             return response.data;

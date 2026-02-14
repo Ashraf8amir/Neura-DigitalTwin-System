@@ -11,7 +11,6 @@ const router = express.Router();
 router.use(verifyToken);
 router.use(authorizeRoles(ROLE.PATIENT, ROLE.DOCTOR, ROLE.ADMIN));
 
-
 router.post('/',
     validateReq(appointmentValidators.createAppointmentSchema),
     appointmentController.createAppointment
@@ -27,5 +26,13 @@ router.get('/today',
 router.get('/upcoming', appointmentController.getUpcomingAppointments);
 router.get('/past', appointmentController.getPastAppointments);
 router.get('/available-slots/:doctorId', appointmentController.getAvailableSlots);
+router.post('/:id/reschedule',
+    validateReq(appointmentValidators.rescheduleAppointmentSchema),
+    appointmentController.rescheduleAppointment
+);
+router.post('/:id/cancel', appointmentController.cancelAppointment);
+
+
+
 
 module.exports = router;

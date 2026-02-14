@@ -69,9 +69,6 @@ class AuthService {
         const existingUser = await User.findOne({ email });
         if (!existingUser) throw new AppError(401, HTTP_STATUS_TEXT.FAIL, 'Invalid email');
 
-        if (existingUser.isDeleted) 
-            throw new AppError(403, HTTP_STATUS_TEXT.FAIL, 'This account has been deleted. Contact support to restore it.');
-
         const isPasswordValid = await bcrypt.compare(password, existingUser.password);
         if (!isPasswordValid) {
             await existingUser.save();

@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const Appointment = require('../modules/appointments/appointment.model');
+const User = require('../shared/models/user.model');
 const { appointmentConstants } = require('../modules/appointments/appointment.constant');
 const logger = require('../core/logger');
 
@@ -37,6 +38,31 @@ class JobService {
             logger.error('Error in auto-cancellation logic:', error);
             throw error; 
         }
+    }
+
+    async unblockBlacklistedPatients() {
+        logger.info('Starting Unblock Blacklisted Patients job manually via trigger...');
+        const now = new Date();
+
+        try {
+            const result = await User.updateMany(
+                {
+                    'blacklist.isBlocked': true,
+                    'blacklist.blockedUntil': { $lte: now }
+                },
+                {
+                    $set: { 'blacklist.isBlocked': false, 'blacklist.blacklistPoints': 0 },
+                    $unset: { 'blacklist.blockedUntil': "" }
+                }
+            );
+
+            logger.info(`Unblock job complete. Unblocked ${result.modifiedCount} patients.`);
+            return result.modifiedCount;
+        } catch (error) {
+            logger.error('Error in unblocking blacklisted patients:', error);
+            throw error; 
+        }
+
     }
 }
 

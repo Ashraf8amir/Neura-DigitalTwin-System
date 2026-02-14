@@ -50,13 +50,35 @@ exports.createAppointmentSchema = (data) => {
 
     return createAppointmentSchema.validate(data, { abortEarly: false });  
 };
-exports.updateStatusSchema = (data) => {
-    const updateStatusSchema = joi.object({
-        status: joi.string().valid(...Object.values(appointmentConstants.APPOINTMENT_STATUSES)).required().messages({
-            'any.only': 'Invalid status value',
-            'any.required': 'Status is required'
+exports.rescheduleAppointmentSchema = (data) => {
+    const rescheduleAppointmentSchema = joi.object({
+        newDate: joi.date().required().min('now').messages({
+            'date.base': 'New date must be a valid date',
+            'date.min': 'New date must be in the future',
+            'any.required': 'New date is required'
+        }),
+        newTime: joi.object({
+            startTime: joi.string()
+                .pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/)
+                .required()
+                .messages({
+                    'string.pattern.base': 'New start time must be in HH:MM format',
+                    'any.required': 'New start time is required'
+                }),
+            endTime: joi.string()
+                .pattern(/^([0-1]\d|2[0-3]):([0-5]\d)$/)
+                .required()
+                .messages({
+                    'string.pattern.base': 'New end time must be in HH:MM format',
+                    'any.required': 'New end time is required'
+                }),
+        }).required(),
+        reason: joi.string().max(500).required().messages({
+            'string.base': 'Reason must be a string',
+            'string.max': 'Reason cannot exceed 500 characters',
+            'any.required': 'Reason for rescheduling is required'
         })
     });
-    
-    return updateStatusSchema.validate(data, { abortEarly: false });
+
+    return rescheduleAppointmentSchema.validate(data, { abortEarly: false });
 };

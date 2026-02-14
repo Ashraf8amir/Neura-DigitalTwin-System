@@ -142,6 +142,13 @@ const patientSchema = new mongoose.Schema({
     },
     default: enums.ACCOUNT_STATUS.INCOMPLETE,
   },
+  blacklist: { 
+    blacklistPoints: { type: Number, default: 0 },
+    isBlocked: { type: Boolean, default: false },
+    blockedUntil: { type: Date },
+    reason: { type: String, trim: true },
+    consecutiveSuccessiveAppointments: { type: Number, default: 0 }
+  },
 });
 
 patientSchema.virtual("bmi").get(function () {

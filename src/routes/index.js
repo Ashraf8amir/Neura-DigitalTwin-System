@@ -5,6 +5,7 @@ const doctorRoutes = require('../modules/doctors/doctor.route');
 const profileRoutes = require('../modules/profile/profile.routes');
 const appointmentRoutes = require('../modules/appointments/appointment.routes');
 const cronRoutes = require('../jobs/job.routes.js');
+const paymentRoutes = require('../modules/payments/payment.route.js');
 const rateLimiter = require('../shared/middlewares/rateLimiter.middleware.js').globalLimiter;
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.use('/patients', patientRoutes);
 router.use('/doctors', doctorRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/cron', cronRoutes);
+router.use('/payments', paymentRoutes);
 
 module.exports = router;

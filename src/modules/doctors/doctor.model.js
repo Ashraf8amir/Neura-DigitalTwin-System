@@ -239,6 +239,19 @@ const doctorSchema = new mongoose.Schema({
       ],
   },
 
+  settings: {
+    rescheduleThreshold: { 
+      type: Number, 
+      default: 12, 
+      min: [0, "Reschedule threshold cannot be negative"] 
+    },
+    cancellationThreshold: { 
+      type: Number, 
+      default: 24,
+      min: [0, "Cancellation threshold cannot be negative"]
+     }
+  },
+
   isVerified: {
     type: Boolean,
     default: false,

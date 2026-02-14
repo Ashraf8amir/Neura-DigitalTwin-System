@@ -39,11 +39,3 @@ exports.paymentSuccess = asyncWrapper(async (req, res) => {
         return res.redirect(`${process.env.FRONTEND_URL}/payment/failed?orderId=${order}`);
     }
 });
-/**
- * @desc    Payment cancel redirect page
- * @route   GET /api/v1/payments/cancel
- * @access  Public
- */
-exports.paymentCancel = asyncWrapper(async (req, res) => {
-    return res.redirect(`${process.env.FRONTEND_URL}/payment/cancelled`);
-});

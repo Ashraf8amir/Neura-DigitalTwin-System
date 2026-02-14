@@ -17,9 +17,11 @@ exports.paymentConstants = Object.freeze({
         PENDING: 'pending',
         COMPLETED: 'completed',
         FAILED: 'failed',
+        REFUNDED_IN_PROCESS: 'refundedInProcess',
         REFUNDED: 'refunded',
         CANCELLED: 'cancelled',
-        PROCESSING: 'processing'
+        PROCESSING: 'processing',
+        REFUND_FAILED: 'refundFailed'
     },
     
 })

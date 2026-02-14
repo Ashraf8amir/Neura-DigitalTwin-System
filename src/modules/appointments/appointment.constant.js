@@ -5,7 +5,8 @@ exports.appointmentConstants = Object.freeze({
         CHECKEDIN: 'checkedIn',
         INPROGRESS: 'inProgress',
         COMPLETED: 'completed',
-        CANCELLED: 'cancelled'
+        CANCELLED: 'cancelled',
+        NO_SHOW: 'noShow'
     },
     APPOINTMENT_TYPES: {
         IN_PERSON: 'inPerson',

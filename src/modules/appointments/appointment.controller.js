@@ -2,6 +2,7 @@ const asyncWrapper = require('../../shared/middlewares/asyncWrapper.middleware')
 const Appointment = require('./appointment.model');
 const { HTTP_STATUS_TEXT } = require('../../shared/constants/enums.js');
 const ApiResponse = require('../../core/apiResponse');
+const AppError = require('../../core/appError');
 const service = require('./appointment.service');
 
 
@@ -216,5 +217,45 @@ exports.getPastAppointments = asyncWrapper(async (req, res) => {
         HTTP_STATUS_TEXT.SUCCESS,
         'Past appointments retrieved successfully',
         result
+    );
+});
+/**
+    * @desc    Reschedule an appointment
+    * @route   POST /api/v1/appointments/:id/reschedule
+    * @access  Private (Patients and Admins and Doctors )
+    * @bodyParams newDate , newTime, reason, clinicId (required for in-person appointments)
+*/
+exports.rescheduleAppointment = asyncWrapper(async (req, res) => {
+    const { id } = req.params;
+    const { newDate, newTime, reason, clinicId } = req.body;
+
+    const updatedAppointment = await service.rescheduleAppointment(id, req.user.id, newDate, newTime, reason, clinicId);
+
+    return new ApiResponse(
+        res,
+        200,
+        HTTP_STATUS_TEXT.SUCCESS,
+        'Appointment rescheduled successfully',
+        updatedAppointment
+    );
+});
+/**
+    * @desc    Cancel an appointment
+    * @route   POST /api/v1/appointments/:id/cancel
+    * @access  Private (Patients and Admins and Doctors )
+    * @bodyParams reason
+*/
+exports.cancelAppointment = asyncWrapper(async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const cancelled = await service.cancelAppointment(id, req.user.id, req.user.role, reason);
+
+    return new ApiResponse(
+        res,
+        200,
+        HTTP_STATUS_TEXT.SUCCESS,
+        'Appointment cancelled successfully',
+        cancelled.pointsAdded
     );
 });

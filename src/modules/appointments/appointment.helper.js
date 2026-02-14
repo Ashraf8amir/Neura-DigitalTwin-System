@@ -159,6 +159,32 @@ class AppointmentHelpers {
         }
         return slots;
     }
+    static calculateRefundPercentage(scheduledDate, role) {
+        const hoursDifference = (scheduledDate - new Date()) / (1000 * 60 * 60);
+        let refundPercentage = 0;
+
+        if (role === 'doctor') {
+            refundPercentage = 1;
+        } else if (hoursDifference >= 12) {
+            refundPercentage = 1;
+        } else if (hoursDifference < 12 && hoursDifference > 1) {
+            refundPercentage = 0.5;
+        }
+
+        return refundPercentage;
+    }
+    // جوه ميثود إتمام الموعد في الـ Schema أو الـ Service
+    static async handlePointDecay(userDocument, options = {}) {
+        userDocument.blacklist.consecutiveSuccessiveAppointments += 1;
+
+        if (userDocument.blacklist.consecutiveSuccessiveAppointments >= 3) {
+          userDocument.blacklist.blacklistPoints = Math.max(0, userDocument.blacklist.blacklistPoints - 2);
+        
+          userDocument.blacklist.consecutiveSuccessiveAppointments = 0;
+        }
+    
+        await userDocument.save(options);
+    }
 }
 
 module.exports = AppointmentHelpers;

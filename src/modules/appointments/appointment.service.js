@@ -13,9 +13,9 @@ const paymentService = require('../payments/payment.service');
 
 class AppointmentService {
 
-    statuses = appointmentConstants.APPOINTMENT_STATUSES;
-    appointmentTypes = appointmentConstants.APPOINTMENT_TYPES;
-    paymentStatuses = appointmentConstants.PAYMENT_STATUSES;
+    static statuses = appointmentConstants.APPOINTMENT_STATUSES;
+    static appointmentTypes = appointmentConstants.APPOINTMENT_TYPES;
+    static paymentStatuses = appointmentConstants.PAYMENT_STATUSES;
 
     async getAvailableSlots(doctorId, date, clinicId, isTelemedicine = false) {
         const startOfDay = new Date(date);
@@ -61,6 +61,7 @@ class AppointmentService {
 
         return allSlots.sort((a, b) => a.startTime.localeCompare(b.startTime)); 
     }
+
     async createAppointment(appointmentData, user) {
         const { doctorId, clinicId, ...rest } = appointmentData;
 
@@ -80,6 +81,11 @@ class AppointmentService {
         
             if (!patient) {
                 throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Patient not found');
+            }
+
+            if (patient.blacklist.isBlocked) {
+                const date = patient.blacklist.blockedUntil.toLocaleDateString();
+                throw new AppError(403, HTTP_STATUS_TEXT.FORBIDDEN, `Patient is blocked from booking appointments until ${date}`);
             }
         
             if ([ACCOUNT_STATUS.SUSPENDED, ACCOUNT_STATUS.INCOMPLETE].includes(patient.accountStatus)) {
@@ -185,6 +191,7 @@ class AppointmentService {
             session.endSession();
         }
     };
+
     async getAllAppointments(user, filters = {}, options = {}) {
         const {
             page = 1,
@@ -227,6 +234,7 @@ class AppointmentService {
         };
 
     }
+
     async countAppointments(user) {
         const baseQuery = {};
 
@@ -286,6 +294,7 @@ class AppointmentService {
         };
 
     }
+
     async getAppointmentStatistics(userId, userRole, period = 'month') {
         let startDate = new Date(new Date().setHours(0, 0, 0, 0));
 
@@ -381,6 +390,7 @@ class AppointmentService {
 
         return { finalStats , period };
     }
+
     async searchAppointments(user, userRole, searchTerm, options = {}) {
         if (!searchTerm || searchTerm.trim() === '') {
             throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'searchTerm query parameter is required');
@@ -425,6 +435,7 @@ class AppointmentService {
             pagination: getPagination(total, page, limit)
         };
     }
+
     async getTodayAppointments(doctorId) {
         const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
         const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
@@ -462,6 +473,7 @@ class AppointmentService {
             }
         };
     }
+
     async getUpcomingAppointments(userId, role, options) {
         const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
         const futureDate = new Date(new Date().setDate(todayStart.getDate() + options.daysAhead));
@@ -506,6 +518,7 @@ class AppointmentService {
             pagination: getPagination(appointments.length, options.page, options.limit)
         };
     }
+
     async getPastAppointments(userId, role, options) {
         const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
         const pastDate = new Date(new Date().setDate(todayStart.getDate() - options.daysBack));
@@ -548,7 +561,115 @@ class AppointmentService {
         };
     }
     
+    async rescheduleAppointment(appointmentId, userId, newDate, newTime, reason, newClinicId = null) {
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
+        try {
+            const query = { 
+                _id: appointmentId, 
+                status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
+            };
+
+            const appointment = await Appointment.findOne(query).populate('doctor').session(session);
+            if (!appointment) {
+                throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found or cannot be rescheduled');
+            }
+
+            if (!appointment.canBeRescheduled) {
+                throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'This appointment cannot be rescheduled');
+            }
+
+            let clinicData = null;
+
+            if (newClinicId && newClinicId.toString() !== appointment.clinic.clinicId.toString()) {
+                const clinicInfo = appointment.doctor.clinicInfo.id(newClinicId);
+                if (!clinicInfo) {
+                    throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'New clinic not found for the doctor');
+                }
+                clinicData = {
+                    clinicId: clinicInfo._id,
+                    clinicName: clinicInfo.clinicName,
+                    address: clinicInfo.address,
+                    location: clinicInfo.location
+                };
+            }
+
+            const isAvailable = await AppointmentHelpers.isTimeSlotAvailable(
+                appointment.doctor,
+                newDate,
+                newTime.startTime,
+                newTime.endTime,
+                session,
+                appointmentId
+            );
+            if (!isAvailable) {
+                throw new AppError(409, HTTP_STATUS_TEXT.CONFLICT, 'New time slot is not available');
+            }
+                
+            await appointment.reschedule(userId, newDate, newTime, reason, { session , newClinicId: clinicData });
+            
+            await session.commitTransaction();
+            return appointment;
+        } catch (error) {
+            await session.abortTransaction();
+            session.endSession();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+    }
+    async cancelAppointment(appointmentId, userId, role, reason) {
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+            const query = { 
+                _id: appointmentId, 
+                status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
+            };
+            const appointment = await Appointment.findOne(query).session(session);
+            if (!appointment) throw new AppError(404, 'NOT_FOUND', 'Appointment not found');
+
+            const patientId = role === 'patient' ? userId : appointment.patient;
+            const patient = await User.findById(patientId).session(session);
+
+            if (!patient) throw new AppError(404, 'NOT_FOUND', 'Patient not found');
+
+            const refundPercentage = AppointmentHelpers.calculateRefundPercentage(appointment.scheduledDate, role);
+
+            let refundDetails = null;
+            if (appointment.payment.paid && refundPercentage > 0) {
+                refundDetails = await paymentService.refundPaymentService(
+                    appointment.payment._id, 
+                    userId, 
+                    refundPercentage, 
+                    reason, 
+                    { session }
+                );
+            }
+
+            await appointment.cancel(userId, role, reason, patient, refundPercentage, { session });
+
+            await session.commitTransaction();
+            return {
+                pointsSummary: {
+                    currentPoints: patient.blacklist.blacklistPoints,
+                    isBlocked: patient.blacklist.isBlocked,
+                    blockedUntil: patient.blacklist.blockedUntil
+                },
+                refundSummary: refundDetails ? {
+                    status: 'INITIATED',
+                    amount: refundDetails.amount,
+                    refundId: refundDetails.refundId
+                } : { status: 'NONE', amount: 0 }
+            };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+    }
 }
 
 module.exports = new AppointmentService();
