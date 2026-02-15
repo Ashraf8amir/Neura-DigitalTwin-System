@@ -13,10 +13,7 @@ const logger = require('./core/logger.js');
 
 const app = express();
 
-app.use(cors({
-    origin: true,
-    credentials: true
-}));
+app.use(cors({ origin: true, credentials: true }));
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json());
@@ -26,9 +23,7 @@ app.use(passport.initialize());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 
-app.get('/', (req, res) => {
-    res.status(200).json({ status: HTTP_STATUS_TEXT.OK, message: 'Hello Render!' });
-});
+app.get('/', (req, res) => {res.status(200).json({ status: HTTP_STATUS_TEXT.OK, message: 'Hello Render!' })});
 app.get('/keep-alive', (req, res) => {
     logger.info('I just got poked to stay awake!');
     res.status(200).send('I am alive');
