@@ -9,6 +9,7 @@ const logger = require('../../core/logger.js');
 const { getPagination } = require('../../shared/utils/globalHelper.js');
 const { appointmentConstants } = require('./appointment.constant');
 const paymentService = require('../payments/payment.service');
+const cloudinaryService = require('../../config/cloudinary');
 
 
 class AppointmentService {
@@ -306,11 +307,10 @@ class AppointmentService {
                     inProgress: { $sum: { $cond: [{ $eq: ["$status", this.statuses.INPROGRESS] }, 1, 0] } },
                     completed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.COMPLETED] }, 1, 0] } },
                     cancelled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CANCELLED] }, 1, 0] } },
-                    rescheduled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.RESCHEDULED] }, 1, 0] } },
 
                     inPerson: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.IN_PERSON] }, 1, 0] } },
                     telemedicine: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.TELEMEDICINE] }, 1, 0] } },
-                    followUp: { $sum: { $cond: [{ $eq: ["$appointmentType", this.visitTypes.FOLLOW_UP] }, 1, 0] } },
+                    followUp: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.FOLLOW_UP] }, 1, 0] } },
                     emergency: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.EMERGENCY] }, 1, 0] } },
                     consultation: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.CONSULTATION] }, 1, 0] } },
 
@@ -543,113 +543,176 @@ class AppointmentService {
     
     async rescheduleAppointment(appointmentId, userId, newDate, newTime, reason, newClinicId = null) {
         const session = await mongoose.startSession();
-        session.startTransaction();
 
         try {
-            const query = { 
-                _id: appointmentId, 
-                status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
-            };
-
-            const appointment = await Appointment.findOne(query).populate('doctor').session(session);
-            if (!appointment) {
-                throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found or cannot be rescheduled');
-            }
-
-            if (!appointment.canBeRescheduled) {
-                throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'This appointment cannot be rescheduled');
-            }
-
-            let clinicData = null;
-
-            if (newClinicId && newClinicId.toString() !== appointment.clinic.clinicId.toString()) {
-                const clinicInfo = appointment.doctor.clinicInfo.id(newClinicId);
-                if (!clinicInfo) {
-                    throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'New clinic not found for the doctor');
-                }
-                clinicData = {
-                    clinicId: clinicInfo._id,
-                    clinicName: clinicInfo.clinicName,
-                    address: clinicInfo.address,
-                    location: clinicInfo.location
+            const result = await session.withTransaction(async () => {
+                const query = { 
+                    _id: appointmentId, 
+                    status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
                 };
-            }
 
-            const isAvailable = await AppointmentHelpers.isTimeSlotAvailable(
-                appointment.doctor,
-                newDate,
-                newTime.startTime,
-                newTime.endTime,
-                session,
-                appointmentId
-            );
-            if (!isAvailable) {
-                throw new AppError(409, HTTP_STATUS_TEXT.CONFLICT, 'New time slot is not available');
-            }
+                const appointment = await Appointment.findOne(query).populate('doctor').session(session);
+                if (!appointment) {
+                    throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found or cannot be rescheduled');
+                }
+
+                if (!appointment.canBeRescheduled) {
+                    throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'This appointment cannot be rescheduled');
+                }
+
+                let clinicData = null;
+                const clinicIdToUse = newClinicId || appointment.clinic?.clinicId;
+
+                if (newClinicId && newClinicId.toString() !== appointment.clinic.clinicId.toString()) {
+                    const clinicInfo = appointment.doctor.clinicInfo.id(newClinicId);
+                    if (!clinicInfo) {
+                        throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'New clinic not found for the doctor');
+                    }
+                    clinicData = {
+                        clinicId: clinicInfo._id,
+                        clinicName: clinicInfo.clinicName,
+                        address: clinicInfo.address,
+                        location: clinicInfo.location
+                    };
+                }
+
+                const isAvailable = await AppointmentHelpers.isTimeSlotAvailable(
+                    appointment.doctor._id || appointment.doctor,
+                    clinicIdToUse,
+                    new Date(newDate),
+                    newTime.startTime,
+                    newTime.endTime,
+                    session,
+                    appointmentId
+                );
+                if (!isAvailable) {
+                    throw new AppError(409, HTTP_STATUS_TEXT.CONFLICT, 'New time slot is not available');
+                }
                 
-            await appointment.reschedule(userId, newDate, newTime, reason, { session , newClinicId: clinicData });
-            
-            await session.commitTransaction();
-            return appointment;
+                await appointment.reschedule(
+                    userId,
+                    new Date(newDate),
+                    newTime,
+                    reason,
+                    { session, newClinicData: clinicData }
+                );
+
+                return appointment;
+            });
+
+            return result;
         } catch (error) {
-            await session.abortTransaction();
-            session.endSession();
+            logger.error('Error rescheduling appointment', { error, appointmentId, userId });
             throw error;
         } finally {
-            session.endSession();
+            await session.endSession();
         }
     }
     async cancelAppointment(appointmentId, userId, role, reason) {
         const session = await mongoose.startSession();
-        session.startTransaction();
+
         try {
-            const query = { 
-                _id: appointmentId, 
-                status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
-            };
-            const appointment = await Appointment.findOne(query).session(session);
-            if (!appointment) throw new AppError(404, 'NOT_FOUND', 'Appointment not found');
 
-            const patientId = role === 'patient' ? userId : appointment.patient;
-            const patient = await User.findById(patientId).session(session);
+            const result = await session.withTransaction(async () => {
+                const query = { 
+                    _id: appointmentId, 
+                    status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
+                };
+                const appointment = await Appointment.findOne(query).session(session);
+                if (!appointment) throw new AppError(404, 'NOT_FOUND', 'Appointment not found');
 
-            if (!patient) throw new AppError(404, 'NOT_FOUND', 'Patient not found');
+                const patientId = role === ROLE.PATIENT ? userId : appointment.patient;
+                const patient = await Patient.findById(patientId).session(session);
 
-            const refundPercentage = AppointmentHelpers.calculateRefundPercentage(appointment.scheduledDate, role);
+                if (!patient) throw new AppError(404, 'NOT_FOUND', 'Patient not found');
 
-            let refundDetails = null;
-            if (appointment.payment.paid && refundPercentage > 0) {
-                refundDetails = await paymentService.refundPaymentService(
-                    appointment.payment._id, 
-                    userId, 
-                    refundPercentage, 
-                    reason, 
-                    { session }
-                );
-            }
+                const refundPercentage = AppointmentHelpers.calculateRefundPercentage(appointment.scheduledDate, role);
 
-            await appointment.cancel(userId, role, reason, patient, refundPercentage, { session });
+                let refundDetails = null;
+                // if (appointment.payment.paid && refundPercentage > 0) {
+                //     refundDetails = await paymentService.refundPaymentService(
+                //         appointment.payment._id, 
+                //         userId, 
+                //         refundPercentage, 
+                //         reason, 
+                //         { session }
+                //     );
+                // }
 
-            await session.commitTransaction();
-            return {
-                pointsSummary: {
-                    currentPoints: patient.blacklist.blacklistPoints,
-                    isBlocked: patient.blacklist.isBlocked,
-                    blockedUntil: patient.blacklist.blockedUntil
-                },
-                refundSummary: refundDetails ? {
-                    status: 'INITIATED',
-                    amount: refundDetails.amount,
-                    refundId: refundDetails.refundId
-                } : { status: 'NONE', amount: 0 }
-            };
+                await appointment.cancel(userId, role, reason, patient, refundPercentage, { session });
+
+                return {
+                    pointsSummary: {
+                        currentPoints: patient.blacklist.blacklistPoints,
+                        isBlocked: patient.blacklist.isBlocked,
+                        blockedUntil: patient.blacklist.blockedUntil
+                    },
+                    refundSummary: refundDetails ? {
+                        status: 'INITIATED',
+                        amount: refundDetails.amount,
+                        refundId: refundDetails.refundId
+                    } : { status: 'NONE', amount: 0 }   
+                };                
+            });
+
+            return result;
+
         } catch (error) {
-            await session.abortTransaction();
+            logger.error('Error cancelling appointment', { error, appointmentId, userId, role });
             throw error;
         } finally {
-            session.endSession();
+            await session.endSession();
         }
     }
-}
 
+    async updatePatientVisitInfo(appointmentId, userId, patientProvidedInfo = {}, filesData = []) {
+        const query = { 
+            _id: appointmentId, 
+            status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] } 
+        };
+        const appointment = await Appointment.findOne(query);
+        if (!appointment) {
+            throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found');
+        }
+
+        if (appointment.patient.toString() !== userId.toString()) {
+            throw new AppError(403, HTTP_STATUS_TEXT.FORBIDDEN, 'You are not authorized to update this appointment');
+        }
+
+
+        const incomingInfo = (patientProvidedInfo && typeof patientProvidedInfo === 'object') ? patientProvidedInfo : {};
+        const normalizedFiles = Array.isArray(filesData) ? filesData : [];
+
+        const uploadedAttachments = [];
+        for (let index = 0; index < normalizedFiles.length; index++) {
+            const fileItem = normalizedFiles[index];
+
+            const uploadResult = await cloudinaryService.uploadDocumentToCloudinary(
+                fileItem.buffer,
+                fileItem.originalname,
+                fileItem.mimetype,
+                {
+                    folder: `appointments/${appointmentId}/visit-info`,
+                    publicId: `visit-attachment-${appointmentId}-${Date.now()}-${index}`
+                }
+            );
+
+            uploadedAttachments.push({
+                fileName: uploadResult.filename,
+                fileUrl: uploadResult.url,
+                uploadedBy: userId,
+                uploadedAt: new Date()
+            });
+        }
+
+        appointment.patientProvidedInfo = {
+            ...incomingInfo,
+            attachments: uploadedAttachments
+        };
+
+        await appointment.save();
+
+        return appointment;
+    }
+}
 module.exports = new AppointmentService();

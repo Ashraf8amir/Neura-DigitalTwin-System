@@ -73,7 +73,7 @@ exports.rescheduleAppointmentSchema = (data) => {
                     'any.required': 'New end time is required'
                 }),
         }).required(),
-        reason: joi.string().max(500).required().messages({
+        reason: joi.string().max(500).optional().messages({
             'string.base': 'Reason must be a string',
             'string.max': 'Reason cannot exceed 500 characters',
             'any.required': 'Reason for rescheduling is required'
@@ -81,4 +81,33 @@ exports.rescheduleAppointmentSchema = (data) => {
     });
 
     return rescheduleAppointmentSchema.validate(data, { abortEarly: false });
+};
+
+exports.updatePatientVisitInfoSchema = (data) => {
+    const updatePatientVisitInfoSchema = joi.object({
+      patientProvidedInfo: joi.object({
+        visitType: joi.string()
+          .valid(...Object.values(appointmentConstants.VISIT_TYPES))
+          .optional()
+          .messages({
+            'any.only': 'visitType is not valid'
+          }),
+        reasonForVisit: joi.string()
+          .max(500)
+          .allow(null, '')
+          .optional()
+          .messages({
+            'string.max': 'reasonForVisit cannot exceed 500 characters'
+          }),
+        patientNotes: joi.string()
+          .max(1000)
+          .allow(null, '')
+          .optional()
+          .messages({
+            'string.max': 'patientNotes cannot exceed 1000 characters'
+          })
+      }).optional()
+    });
+
+    return updatePatientVisitInfoSchema.validate(data, { abortEarly: false });
 };

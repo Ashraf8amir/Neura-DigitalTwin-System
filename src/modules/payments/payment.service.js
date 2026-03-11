@@ -8,13 +8,17 @@ const Appointment = require('../appointments/appointment.model');
 const { ROLE } = require('../../shared/constants/enums.js');
 const logger = require('../../core/logger.js');
 const mongoose = require('mongoose');
+const AppError = require('../../core/appError');
+const { HTTP_STATUS_TEXT } = require('../../shared/constants/enums.js');
+
+
 
 
 class PaymentService {
     async getBillingData(userId) {
         const user = await User.findById(userId);
         if (!user) {
-            throw new Error('User not found for billing data');
+            throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'User not found for billing data');
         }
 
         return {
@@ -322,7 +326,7 @@ class PaymentService {
         });
 
         if (payments.length === 0) {
-            throw new AppError(404, httpStatus.FAIL, 'No payments found to settle');
+            throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'No payments found to settle');
         }
 
         const totalAmount = payments.reduce(
@@ -353,15 +357,15 @@ class PaymentService {
         const payment = await Payment.findById(paymentId);
 
         if (!payment) {
-            throw new AppError(404, httpStatus.FAIL, 'Payment not found');
+            throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Payment not found');
         }
 
         if (payment.status !== paymentConstants.STATUS.COMPLETED) {
-            throw new AppError(400, httpStatus.FAIL, 'Only completed payments can be refunded');
+            throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'Only completed payments can be refunded');
         }
 
         if (payment.refund?.refundId) {
-            throw new AppError(400, httpStatus.FAIL, 'Payment already refunded');
+            throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'Payment already refunded');
         }
 
         const refundResponse = await paymob.refundTransaction(payment.paymobTransactionId, refundPercentage, payment.amount.total);

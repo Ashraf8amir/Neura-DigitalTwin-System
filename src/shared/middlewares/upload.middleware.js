@@ -55,6 +55,7 @@ module.exports = {
     uploadProfileImage: uploadImage.single('profileImage'),
     uploadPDF: uploadPDF.single('document'),
     uploadImageOrPDF: uploadImageOrPDF.single('file'),
+    uploadVisitAttachments: uploadImageOrPDF.array('files', 10),
     
     uploadMultipleImages: uploadImage.array('images', 5),
     uploadMultiplePDFs: uploadPDF.array('documents', 10), 

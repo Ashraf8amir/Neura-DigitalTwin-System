@@ -4,6 +4,8 @@ const verifyToken = require('../../shared/middlewares/verifyToken.middleware.js'
 const validateReq = require('../../shared/middlewares/validation.middleware.js'); 
 const appointmentValidators = require('./appointment.validator.js');
 const authorizeRoles = require('../../shared/middlewares/roleCheck.middleware.js');
+const uploadMiddleware = require('../../shared/middlewares/upload.middleware.js');
+const parseJsonBodyFields = require('../../shared/middlewares/jsonBodyFields.middleware.js');
 const { ROLE } = require('../../shared/constants/enums');
 
 const router = express.Router();
@@ -31,7 +33,12 @@ router.post('/:id/reschedule',
     appointmentController.rescheduleAppointment
 );
 router.post('/:id/cancel', appointmentController.cancelAppointment);
-
+router.patch('/:id/visit-info',
+    uploadMiddleware.uploadVisitAttachments,
+    parseJsonBodyFields(['patientProvidedInfo']),
+    validateReq(appointmentValidators.updatePatientVisitInfoSchema),
+    appointmentController.updatePatientVisitInfo
+);
 
 
 

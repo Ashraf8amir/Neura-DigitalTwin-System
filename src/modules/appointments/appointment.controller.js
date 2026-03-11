@@ -4,6 +4,7 @@ const { HTTP_STATUS_TEXT } = require('../../shared/constants/enums.js');
 const ApiResponse = require('../../core/apiResponse');
 const AppError = require('../../core/appError');
 const service = require('./appointment.service');
+const logger = require('../../core/logger.js');
 
 
 
@@ -250,12 +251,36 @@ exports.cancelAppointment = asyncWrapper(async (req, res) => {
     const { reason } = req.body;
 
     const cancelled = await service.cancelAppointment(id, req.user.id, req.user.role, reason);
+    logger.info('Cancelled appointment details:', cancelled);
 
     return new ApiResponse(
         res,
         200,
         HTTP_STATUS_TEXT.SUCCESS,
         'Appointment cancelled successfully',
-        cancelled.pointsAdded
+        cancelled
     );
 });
+/**
+    * @desc    Complete an appointment
+    * @route   PATCH /api/v1/appointments/:id/visit-info
+    * @access  Private (Patients and Admins and Doctors )
+    * @bodyParams patientProvidedInfo 
+*/
+exports.updatePatientVisitInfo = asyncWrapper(async (req, res) => {
+    const appointment = await service.updatePatientVisitInfo(
+        req.params.id,
+        req.user.id,
+        req.body.patientProvidedInfo,
+        req.files,
+    );
+
+    return new ApiResponse(
+        res,
+        200,
+        HTTP_STATUS_TEXT.SUCCESS,
+        'Patient visit info updated successfully',
+        appointment
+    );
+});
+

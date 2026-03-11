@@ -95,7 +95,7 @@ const appointmentSchema = new mongoose.Schema(
 
     patientProvidedInfo: {
 
-       visitType: {
+      visitType: {
         type: String,
         enum: {
           values: Object.values(appointmentConstants.VISIT_TYPES),
@@ -120,7 +120,6 @@ const appointmentSchema = new mongoose.Schema(
         {
           fileName: String,
           fileUrl: String,
-          description: String,
           uploadedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User'
@@ -129,6 +128,7 @@ const appointmentSchema = new mongoose.Schema(
             type: Date,
             default: Date.now
           },
+          _id: false
         }
       ]
     },
@@ -372,13 +372,6 @@ const appointmentSchema = new mongoose.Schema(
       default: appointmentConstants.PRIORITIES.MEDIUM,
       index: true
     },
-
-    tags: [
-      {
-        type: String,
-        trim: true
-      }
-    ],
 
     review: {
       rating: {
