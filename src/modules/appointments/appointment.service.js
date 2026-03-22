@@ -714,4 +714,6 @@ class AppointmentService {
         return appointment;
     }
 }
+
+
 module.exports = new AppointmentService();

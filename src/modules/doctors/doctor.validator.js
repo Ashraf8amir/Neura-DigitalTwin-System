@@ -149,6 +149,7 @@ exports.updateClinicInfoSchema = joi.object({
 exports.addTelemedicineSchema = joi.object({
     body: joi.object({
         consultationFee: joi.number().min(0).max(10000).required(),
+        consultationDuration: joi.number().integer().min(5).max(240).default(30),
         availableHours: joi.array().items(
             joi.object({
                 day: joi.string().valid(...Object.values(enums.DAYS_OF_WEEK)).required(),
@@ -164,6 +165,7 @@ exports.addTelemedicineSchema = joi.object({
 exports.updateTelemedicineSchema = joi.object({
     body: joi.object({
         consultationFee: joi.number().min(0).max(10000).optional(),
+        consultationDuration: joi.number().integer().min(5).max(240).optional(),
         availableHours: joi.array().items(
             joi.object({
                 day: joi.string().valid(...Object.values(enums.DAYS_OF_WEEK)).required(),

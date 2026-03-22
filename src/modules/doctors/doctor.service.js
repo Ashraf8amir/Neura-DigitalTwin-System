@@ -197,8 +197,20 @@ class DoctorService {
             throw new AppError(400, HTTP_STATUS_TEXT.FAIL, 'Telemedicine is not enabled for this doctor');
         }
 
-        doctor.telemedicine = telemedicineData;
-        doctor.telemedicine.enabled = true;
+        const currentTelemedicine = doctor.telemedicine?.toObject
+            ? doctor.telemedicine.toObject()
+            : (doctor.telemedicine || {});
+
+        doctor.telemedicine = {
+            ...currentTelemedicine,
+            ...telemedicineData,
+            consultationDuration:
+                telemedicineData.consultationDuration ??
+                currentTelemedicine.consultationDuration ??
+                30,
+            enabled: true,
+        };
+
         await doctor.save();
 
         return doctor.telemedicine;

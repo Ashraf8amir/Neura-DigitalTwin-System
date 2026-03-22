@@ -156,7 +156,6 @@ class AppointmentHelpers {
 
         return refundPercentage;
     }
-    // جوه ميثود إتمام الموعد في الـ Schema أو الـ Service
     static async handlePointDecay(userDocument, options = {}) {
         userDocument.blacklist.consecutiveSuccessiveAppointments += 1;
 
