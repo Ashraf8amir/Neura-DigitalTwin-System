@@ -49,6 +49,7 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "resend": "^6.5.2",
+    "socket.io": "^4.8.1",
     "ua-parser-js": "^2.0.6",
     "winston": "^3.18.3"
   }

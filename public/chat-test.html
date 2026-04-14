@@ -1,0 +1,1768 @@
+<!-- Sahtak Chat System — Test Interface -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sahtak Chat Test</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --border: #e0e0e0;
+      --muted: #6b7280;
+      --panel: #fafafa;
+      --sent: #dbeafe;
+      --received: #f3f4f6;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --primary: #2563eb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --text: #f0f0f0;
+        --border: #333333;
+        --muted: #9ca3af;
+        --panel: #222222;
+        --sent: #dbeafe;
+        --received: #f3f4f6;
+        --success: #22c55e;
+        --danger: #ef4444;
+        --primary: #3b82f6;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr 220px;
+      gap: 0;
+    }
+
+    .config {
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: auto 180px 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .config input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .me-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      max-width: 240px;
+    }
+
+    .me-avatar {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+    }
+
+    .me-meta {
+      min-width: 0;
+    }
+
+    .me-name {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .me-role {
+      margin-top: 2px;
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    .btn:hover:not(:disabled) {
+      border-color: var(--primary);
+    }
+
+    .btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+    }
+
+    .main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+    }
+
+    .sidebar {
+      min-height: 0;
+      border-right: 1px solid var(--border);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--panel);
+    }
+
+    .sidebar-head,
+    .new-conversation {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .new-conversation {
+      border-top: 1px solid var(--border);
+      border-bottom: none;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .sidebar h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .sidebar input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .conversation-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      overflow: auto;
+    }
+
+    .conversation-item {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .conversation-item:hover {
+      background: rgba(37, 99, 235, 0.08);
+    }
+
+    .conversation-item.active {
+      background: rgba(37, 99, 235, 0.16);
+      box-shadow: inset 3px 0 0 var(--primary);
+    }
+
+    .conversation-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .conversation-name {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .conversation-name-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .role-pill {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--primary);
+      text-transform: capitalize;
+      white-space: nowrap;
+    }
+
+    .presence-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      flex: 0 0 auto;
+    }
+
+    .presence-dot.online {
+      background: var(--success);
+    }
+
+    .avatar-wrap {
+      position: relative;
+      display: inline-flex;
+      flex: 0 0 auto;
+      border-radius: 50%;
+    }
+
+    .avatar-online-dot {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      border-radius: 50%;
+      border: 2px solid var(--panel);
+      background: transparent;
+    }
+
+    .avatar-online-dot.online {
+      background: var(--success);
+    }
+
+    .conversation-preview {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      min-width: 20px;
+      text-align: center;
+      border-radius: 999px;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 11px;
+      padding: 2px 6px;
+      font-weight: 700;
+    }
+
+    .chat {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      background: var(--bg);
+    }
+
+    .chat-header {
+      border-bottom: 1px solid var(--border);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .chat-identity {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .chat-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .chat-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .messages {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      scroll-behavior: smooth;
+    }
+
+    .message-row {
+      display: flex;
+      align-items: flex-end;
+    }
+
+    .message-row.sent {
+      justify-content: flex-end;
+    }
+
+    .message-row.received {
+      justify-content: flex-start;
+      gap: 8px;
+    }
+
+    .message-avatar {
+      width: 24px;
+      flex: 0 0 24px;
+    }
+
+    .message-bubble {
+      max-width: 70%;
+      border-radius: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      color: #111827;
+    }
+
+    .message-row.sent .message-bubble {
+      background: var(--sent);
+    }
+
+    .message-row.received .message-bubble {
+      background: var(--received);
+    }
+
+    .message-content {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 14px;
+    }
+
+    .message-meta {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #4b5563;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .message-row.sent .message-meta {
+      justify-content: flex-end;
+    }
+
+    .message-status-icon {
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .message-status-icon.sent,
+    .message-status-icon.delivered {
+      color: #6b7280;
+    }
+
+    .message-status-icon.read {
+      color: #2563eb;
+    }
+
+    .typing {
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      padding: 8px 12px;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .typing.hidden {
+      visibility: hidden;
+    }
+
+    .typing-dots {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      transform: translateY(1px);
+    }
+
+    .typing-dots span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: typing-bounce 1.2s infinite ease-in-out;
+    }
+
+    .typing-dots span:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .typing-dots span:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @keyframes typing-bounce {
+      0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    .composer {
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .composer input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .attachment-btn {
+      width: 40px;
+      min-width: 40px;
+      padding: 10px 0;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .attachment-preview {
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+    }
+
+    .attachment-preview.hidden {
+      display: none;
+    }
+
+    .attachment-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: var(--bg);
+    }
+
+    .attachment-file {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .attachment-file-name {
+      max-width: 320px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+
+    .attachment-status {
+      color: var(--muted);
+    }
+
+    .placeholder {
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    .log {
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+      background: var(--panel);
+    }
+
+    .log-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .log-body {
+      margin: 0;
+      padding: 10px 12px;
+      overflow: auto;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="config">
+      <div id="meInfo" class="me-info">
+        <div id="meAvatar" class="me-avatar"></div>
+        <div class="me-meta">
+          <div id="meName" class="me-name">Not connected</div>
+          <span id="meRole" class="role-pill me-role">guest</span>
+        </div>
+      </div>
+      <input id="apiUrlInput" type="text" value="http://localhost:3070" placeholder="API URL" />
+      <input id="tokenInput" type="text" placeholder="JWT token" />
+      <button id="connectBtn" class="btn" type="button">Connect Socket</button>
+      <div class="status">
+        <span id="socketDot" class="status-dot"></span>
+        <span id="socketState">Disconnected</span>
+      </div>
+    </section>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <h3>Conversations</h3>
+        </div>
+
+        <ul id="conversationList" class="conversation-list"></ul>
+
+        <div class="new-conversation">
+          <input id="otherUserIdInput" type="text" placeholder="Other user ID" />
+          <button id="createConversationBtn" class="btn" type="button">Create / Get conversation</button>
+        </div>
+      </aside>
+
+      <section class="chat">
+        <header class="chat-header">
+          <div class="chat-identity">
+            <div id="headerAvatar"></div>
+            <div>
+              <p id="chatTitle" class="chat-title">No conversation selected</p>
+              <p id="chatSubtitle" class="chat-subtitle">offline</p>
+            </div>
+          </div>
+          <button id="refreshMessagesBtn" class="btn" type="button">Refresh messages</button>
+        </header>
+
+        <div id="messages" class="messages">
+          <p class="placeholder">Load conversations then select one to start testing.</p>
+        </div>
+
+        <div id="typingIndicator" class="typing hidden">
+          <span>typing</span>
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+        </div>
+
+        <div id="attachmentPreview" class="attachment-preview hidden"></div>
+
+        <div class="composer">
+          <button id="attachBtn" class="btn attachment-btn" type="button" title="Attach image or PDF">📎</button>
+          <input id="messageInput" type="text" placeholder="Type a message and press Enter" />
+          <button id="sendBtn" class="btn" type="button">Send</button>
+          <input id="fileInput" type="file" accept="image/*,.pdf" style="display:none;" />
+        </div>
+      </section>
+    </div>
+
+    <section class="log">
+      <div class="log-header">
+        <strong>Socket Events Log</strong>
+        <button id="clearLogBtn" class="btn" type="button">Clear log</button>
+      </div>
+      <pre id="logBody" class="log-body"></pre>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.4/dist/socket.io.min.js"></script>
+  <script>
+    (function () {
+      const SOCKET_EVENTS = {
+        GET_ONLINE_USERS: "presence:get_online_users",
+        ONLINE_USERS_SNAPSHOT: "presence:online_users_snapshot",
+        CHAT_JOIN: "chat:join",
+        CHAT_LEAVE: "chat:leave",
+        CHAT_MESSAGE: "chat:message",
+        CHAT_DELIVERED: "chat:delivered",
+        CHAT_READ: "chat:read",
+        CHAT_TYPING: "chat:typing",
+        CHAT_STOP_TYPING: "chat:stop_typing",
+        USER_PRESENCE_CHANGED: "user:presence_changed"
+      };
+
+      const state = {
+        socket: null,
+        presenceSocket: null,
+        connected: false,
+        currentUserId: null,
+        currentUserProfile: null,
+        activeConversationId: null,
+        conversations: [],
+        messagesByConversation: new Map(),
+        unreadByConversation: new Map(),
+        onlineByUser: new Map(),
+        typingUsers: new Set(),
+        typingTimer: null,
+        typingSent: false,
+        attachmentPreviewUrl: null
+      };
+
+      const els = {
+        meAvatar: document.getElementById("meAvatar"),
+        meName: document.getElementById("meName"),
+        meRole: document.getElementById("meRole"),
+        apiUrlInput: document.getElementById("apiUrlInput"),
+        tokenInput: document.getElementById("tokenInput"),
+        connectBtn: document.getElementById("connectBtn"),
+        socketDot: document.getElementById("socketDot"),
+        socketState: document.getElementById("socketState"),
+        conversationList: document.getElementById("conversationList"),
+        otherUserIdInput: document.getElementById("otherUserIdInput"),
+        createConversationBtn: document.getElementById("createConversationBtn"),
+        chatTitle: document.getElementById("chatTitle"),
+        chatSubtitle: document.getElementById("chatSubtitle"),
+        headerAvatar: document.getElementById("headerAvatar"),
+        refreshMessagesBtn: document.getElementById("refreshMessagesBtn"),
+        messages: document.getElementById("messages"),
+        typingIndicator: document.getElementById("typingIndicator"),
+        attachmentPreview: document.getElementById("attachmentPreview"),
+        attachBtn: document.getElementById("attachBtn"),
+        fileInput: document.getElementById("fileInput"),
+        messageInput: document.getElementById("messageInput"),
+        sendBtn: document.getElementById("sendBtn"),
+        clearLogBtn: document.getElementById("clearLogBtn"),
+        logBody: document.getElementById("logBody")
+      };
+
+      const savedToken = localStorage.getItem("accessToken");
+      if (savedToken) {
+        els.tokenInput.value = savedToken;
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function getApiBase() {
+        return (els.apiUrlInput.value || "http://localhost:3070").trim().replace(/\/+$/, "");
+      }
+
+      function getToken() {
+        return (els.tokenInput.value || "").trim();
+      }
+
+      function normalizeProfileImage(profileImage) {
+        if (!profileImage) return "";
+        if (typeof profileImage === "string") return profileImage;
+        if (typeof profileImage === "object") {
+          return profileImage.imageUrl || profileImage.url || "";
+        }
+        return "";
+      }
+
+      function renderAvatar(user, size) {
+        const imageUrl = normalizeProfileImage(user && user.profileImage);
+        if (imageUrl) {
+          return '<img src="' + escapeHtml(imageUrl) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;">';
+        }
+        const initial = (((user && user.firstName) || "?")[0] || "?").toUpperCase();
+        const colors = ["#E6F1FB", "#E1F5EE", "#EEEDFE", "#FAEEDA"];
+        const textColors = ["#0C447C", "#085041", "#3C3489", "#633806"];
+        const i = initial.charCodeAt(0) % 4;
+        return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + colors[i] + ';color:' + textColors[i] + ';display:flex;align-items:center;justify-content:center;font-size:' + Math.round(size * 0.4) + 'px;font-weight:500;flex-shrink:0">' + initial + "</div>";
+      }
+
+      function renderAvatarWithOnlineDot(user, size, online) {
+        const dotSize = Math.max(8, Math.round(size * 0.28));
+        return (
+          '<div class="avatar-wrap" style="width:' + size + "px;height:" + size + 'px;">' +
+          renderAvatar(user, size) +
+          (online
+            ? '<span class="avatar-online-dot online" style="width:' + dotSize + "px;height:" + dotSize + 'px;"></span>'
+            : "") +
+          "</div>"
+        );
+      }
+
+      function renderStatusIcon(status) {
+        if (status === "read") {
+          return '<span class="message-status-icon read" title="read">✓✓</span>';
+        }
+        if (status === "delivered") {
+          return '<span class="message-status-icon delivered" title="delivered">✓✓</span>';
+        }
+        return '<span class="message-status-icon sent" title="sent">✓</span>';
+      }
+
+      function setCurrentUserInfo(profile) {
+        const user = profile || {};
+        const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "Unknown user";
+        const role = (user.role || "unknown").toLowerCase();
+
+        els.meAvatar.innerHTML = renderAvatar(user, 36);
+        els.meName.textContent = fullName;
+        els.meRole.textContent = role;
+      }
+
+      function parseJwtUserId(token) {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return (payload && (payload.id || payload.userId || payload._id || null)) || null;
+      }
+
+      function ensureAuth() {
+        const token = getToken();
+        if (!token) {
+          throw new Error("JWT token is required");
+        }
+
+        localStorage.setItem("accessToken", token);
+        state.currentUserId = String(parseJwtUserId(token) || "");
+        if (!state.currentUserId) {
+          throw new Error("Could not extract userId from token");
+        }
+      }
+
+      function timeHHMMSS(dateLike) {
+        const date = dateLike ? new Date(dateLike) : new Date();
+        return date.toLocaleTimeString([], { hour12: false });
+      }
+
+      function appendLog(eventName, data) {
+        const line = "[" + timeHHMMSS() + "] " + eventName + ": " + JSON.stringify(data);
+        if (els.logBody.textContent) {
+          els.logBody.textContent += "\n" + line;
+        } else {
+          els.logBody.textContent = line;
+        }
+        els.logBody.scrollTop = els.logBody.scrollHeight;
+      }
+
+      function setSocketState(statusText, connected) {
+        els.socketState.textContent = statusText;
+        els.socketDot.classList.toggle("connected", Boolean(connected));
+        els.connectBtn.textContent = connected ? "Disconnect Socket" : "Connect Socket";
+      }
+
+      function setButtonLoading(button, loading, loadingText) {
+        if (loading) {
+          button.dataset.originalText = button.textContent;
+          button.textContent = loadingText;
+          button.disabled = true;
+          return;
+        }
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || button.textContent;
+      }
+
+      async function withLoading(button, loadingText, fn) {
+        setButtonLoading(button, true, loadingText);
+        try {
+          return await fn();
+        } finally {
+          setButtonLoading(button, false, loadingText);
+        }
+      }
+
+      async function apiRequest(path, options) {
+        ensureAuth();
+
+        const opts = options || {};
+        const headers = Object.assign(
+          {
+            Authorization: "Bearer " + getToken()
+          },
+          opts.headers || {}
+        );
+
+        if (opts.body !== undefined) {
+          headers["Content-Type"] = "application/json";
+        }
+
+        let response;
+        let payload = null;
+        try {
+          response = await fetch(getApiBase() + path, {
+            method: opts.method || "GET",
+            headers: headers,
+            body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+          });
+        } catch (error) {
+          appendLog("API_ERROR", { path: path, message: error.message });
+          throw error;
+        }
+
+        try {
+          payload = await response.json();
+        } catch (error) {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const message = (payload && payload.message) || ("HTTP " + response.status);
+          appendLog("API_ERROR", { path: path, status: response.status, message: message, data: payload });
+          throw new Error(message);
+        }
+
+        return payload;
+      }
+
+      async function fetchCurrentUserProfile() {
+        const response = await apiRequest("/api/v1/profile/me");
+        const user = response && response.data && response.data.user ? response.data.user : null;
+        if (!user) {
+          throw new Error("Unable to load profile");
+        }
+        state.currentUserProfile = {
+          id: user._id || user.id || state.currentUserId,
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          role: user.role || "",
+          profileImage: normalizeProfileImage(user.profileImage)
+        };
+        setCurrentUserInfo(state.currentUserProfile);
+      }
+
+      async function fetchConversationMessagesPage(conversationId, page, limit) {
+        const response = await apiRequest(
+          "/api/v1/chat/conversations/" +
+            encodeURIComponent(conversationId) +
+            "/messages?page=" +
+            page +
+            "&limit=" +
+            limit
+        );
+        return {
+          messages: Array.isArray(response && response.data) ? response.data : [],
+          meta: (response && response.meta) || {}
+        };
+      }
+
+      async function deriveUnreadCountForConversation(conversationId) {
+        const messages = await fetchAllMessagesForConversation(conversationId);
+        return messages.filter(function (message) {
+          return String(message.receiverId) === String(state.currentUserId) && message.status !== "read";
+        }).length;
+      }
+
+      async function fetchAllMessagesForConversation(conversationId) {
+        const all = [];
+        let page = 1;
+        let totalPages = 1;
+        const limit = 100;
+
+        while (page <= totalPages) {
+          const pageResult = await fetchConversationMessagesPage(conversationId, page, limit);
+          all.push.apply(all, pageResult.messages);
+          totalPages = Number(pageResult.meta.totalPages) || 1;
+          if (!pageResult.meta.hasNextPage) {
+            break;
+          }
+          page += 1;
+        }
+
+        return all;
+      }
+
+      async function hydrateUnreadCounts(conversations) {
+        const counts = await Promise.all(
+          conversations.map(async function (conversation) {
+            const directCount =
+              conversation.unreadCount ??
+              conversation.unreadMessagesCount ??
+              conversation.unreadMessages ??
+              conversation.unread;
+
+            if (Number.isFinite(Number(directCount))) {
+              return { conversationId: conversation.id, count: Number(directCount) };
+            }
+
+            const derived = await deriveUnreadCountForConversation(conversation.id);
+            return { conversationId: conversation.id, count: derived };
+          })
+        );
+
+        counts.forEach(function (entry) {
+          state.unreadByConversation.set(entry.conversationId, entry.count);
+        });
+      }
+
+      function formatFileSize(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+          size /= 1024;
+          unitIndex += 1;
+        }
+        const rounded = unitIndex === 0 ? Math.round(size) : size.toFixed(1);
+        return rounded + " " + units[unitIndex];
+      }
+
+      function clearAttachmentPreview() {
+        if (state.attachmentPreviewUrl) {
+          URL.revokeObjectURL(state.attachmentPreviewUrl);
+          state.attachmentPreviewUrl = null;
+        }
+        els.attachmentPreview.innerHTML = "";
+        els.attachmentPreview.classList.add("hidden");
+      }
+
+      function setAttachmentPreview(file, statusText) {
+        clearAttachmentPreview();
+
+        const isImage = file.type.startsWith("image/");
+        const safeName = escapeHtml(file.name || "file");
+        const safeSize = escapeHtml(formatFileSize(file.size));
+        let previewMedia = "";
+
+        if (isImage) {
+          state.attachmentPreviewUrl = URL.createObjectURL(file);
+          previewMedia = '<img class="attachment-thumb" src="' + state.attachmentPreviewUrl + '" alt="Selected image">';
+        }
+
+        const fileInfo =
+          '<div class="attachment-file">' +
+          '<span class="attachment-file-name">' +
+          safeName +
+          "</span>" +
+          '<span class="attachment-status">' +
+          escapeHtml(statusText || safeSize) +
+          "</span>" +
+          "</div>";
+
+        els.attachmentPreview.innerHTML = previewMedia + fileInfo;
+        els.attachmentPreview.classList.remove("hidden");
+      }
+
+      async function uploadAttachmentMessage(file) {
+        ensureAuth();
+
+        if (!state.activeConversationId) {
+          throw new Error("Select a conversation first");
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("content", file.name || "Attachment");
+
+        const response = await fetch(
+          getApiBase() + "/api/v1/chat/conversations/" + encodeURIComponent(state.activeConversationId) + "/attachments",
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + getToken()
+            },
+            body: formData
+          }
+        );
+
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const message = (payload && payload.message) || ("HTTP " + response.status);
+          appendLog("API_ERROR", { action: "upload-attachment", status: response.status, message: message });
+          throw new Error(message);
+        }
+
+        return payload && payload.data ? payload.data : null;
+      }
+
+      function getConversationById(conversationId) {
+        return state.conversations.find(function (conversation) {
+          return conversation.id === conversationId;
+        }) || null;
+      }
+
+      function getOtherName(conversation) {
+        if (!conversation || !conversation.otherUser) return "Unknown user";
+        return (
+          conversation.otherUser.fullName ||
+          [conversation.otherUser.firstName, conversation.otherUser.lastName].filter(Boolean).join(" ") ||
+          conversation.otherUser.id ||
+          "Unknown user"
+        );
+      }
+
+      function getLastPreview(conversation) {
+        if (!conversation || !conversation.lastMessage || !conversation.lastMessage.content) {
+          return "No messages yet";
+        }
+        return conversation.lastMessage.content;
+      }
+
+      function isUserOnline(userId) {
+        return state.onlineByUser.get(String(userId)) === "online";
+      }
+
+      function handlePresenceChanged(payload) {
+        if (!payload || !payload.userId) return;
+        state.onlineByUser.set(String(payload.userId), payload.status || "offline");
+        renderConversations();
+        updateHeader();
+      }
+
+      function handleOnlineUsersSnapshot(payload) {
+        const onlineUsers = payload && Array.isArray(payload.onlineUsers) ? payload.onlineUsers : [];
+        const nextMap = new Map();
+
+        onlineUsers.forEach(function (userId) {
+          nextMap.set(String(userId), "online");
+        });
+
+        state.onlineByUser = nextMap;
+        renderConversations();
+        updateHeader();
+      }
+
+      function renderConversations() {
+        if (!state.conversations.length) {
+          els.conversationList.innerHTML = '<li class="conversation-item"><div class="conversation-preview">No conversations loaded.</div></li>';
+          return;
+        }
+
+        const html = state.conversations
+          .map(function (conversation) {
+            const role = (conversation.otherUser && conversation.otherUser.role) || "unknown";
+            const unread = state.unreadByConversation.get(conversation.id) || 0;
+            const isActive = conversation.id === state.activeConversationId;
+            const online = conversation.otherUser && conversation.otherUser.id && isUserOnline(conversation.otherUser.id);
+            const otherUser = conversation.otherUser || {};
+
+            return (
+              '<li class="conversation-item ' + (isActive ? "active" : "") + '" data-conversation-id="' + escapeHtml(conversation.id) + '">' +
+                '<div class="conversation-top">' +
+                  '<div class="conversation-name">' +
+                    renderAvatarWithOnlineDot(otherUser, 32, Boolean(online)) +
+                    '<span class="conversation-name-text">' + escapeHtml(getOtherName(conversation)) + "</span>" +
+                    '<span class="role-pill">' + escapeHtml(role) + "</span>" +
+                  "</div>" +
+                  (unread > 0 ? '<span class="badge">' + unread + "</span>" : "") +
+                "</div>" +
+                '<div class="conversation-preview">' + escapeHtml(getLastPreview(conversation)) + "</div>" +
+              "</li>"
+            );
+          })
+          .join("");
+
+        els.conversationList.innerHTML = html;
+      }
+
+      function updateHeader() {
+        const conversation = getConversationById(state.activeConversationId);
+        if (!conversation) {
+          els.chatTitle.textContent = "No conversation selected";
+          els.chatSubtitle.textContent = "offline";
+          els.headerAvatar.innerHTML = renderAvatar({ firstName: "?" }, 40);
+          return;
+        }
+
+        const name = getOtherName(conversation);
+        const role = (conversation.otherUser && conversation.otherUser.role) || "unknown";
+        const online = conversation.otherUser && conversation.otherUser.id && isUserOnline(conversation.otherUser.id);
+        const otherUser = conversation.otherUser || {};
+
+        els.headerAvatar.innerHTML = renderAvatarWithOnlineDot(otherUser, 40, Boolean(online));
+        els.chatTitle.textContent = name;
+        els.chatSubtitle.textContent = (online ? "online" : "offline") + " • " + role;
+      }
+
+      function getMessages(conversationId) {
+        const existing = state.messagesByConversation.get(conversationId);
+        return Array.isArray(existing) ? existing : [];
+      }
+
+      function setMessages(conversationId, messages) {
+        const normalized = Array.isArray(messages) ? messages.slice() : [];
+        normalized.sort(function (a, b) {
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
+        state.messagesByConversation.set(conversationId, normalized);
+      }
+
+      function updateConversationLastMessage(message) {
+        const conversation = getConversationById(message.conversationId);
+        if (!conversation) return;
+
+        conversation.lastMessage = {
+          content: message.content,
+          sentAt: message.createdAt,
+          senderId: message.senderId,
+          messageType: message.messageType
+        };
+      }
+
+      function upsertMessage(message) {
+        if (!message || !message.id || !message.conversationId) return;
+
+        const conversationId = String(message.conversationId);
+        const list = getMessages(conversationId).slice();
+        const index = list.findIndex(function (item) {
+          return item.id === message.id;
+        });
+
+        if (index >= 0) {
+          list[index] = Object.assign({}, list[index], message);
+        } else {
+          list.push(message);
+        }
+
+        setMessages(conversationId, list);
+        updateConversationLastMessage(message);
+      }
+
+      function updateMessageStatus(messageId, status, extraKey, extraValue) {
+        state.messagesByConversation.forEach(function (messages, conversationId) {
+          const index = messages.findIndex(function (message) {
+            return message.id === messageId;
+          });
+          if (index < 0) return;
+
+          const next = Object.assign({}, messages[index], { status: status });
+          if (extraKey) {
+            next[extraKey] = extraValue;
+          }
+          messages[index] = next;
+          setMessages(conversationId, messages);
+        });
+      }
+
+      function formatMessageStatus(message) {
+        const status = message.status || "sent";
+        if (status === "read") return "read";
+        if (status === "delivered") return "delivered";
+        return "sent";
+      }
+
+      function renderMessageAttachment(message) {
+        const attachment = message && message.attachment ? message.attachment : null;
+        if (!attachment || !attachment.url) {
+          return "";
+        }
+
+        const isImage = message.messageType === "image";
+        if (isImage) {
+          return (
+            '<div style="margin-top:8px;">' +
+            '<img src="' +
+            escapeHtml(attachment.url) +
+            '" alt="Attachment image" style="max-width:200px;max-height:180px;border-radius:10px;border:1px solid var(--border);display:block;">' +
+            "</div>"
+          );
+        }
+
+        const fileName = attachment.fileName || message.content || "Attachment";
+        return (
+          '<div style="margin-top:8px;">' +
+          '<a href="' +
+          escapeHtml(attachment.url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(fileName) +
+          "</a>" +
+          "</div>"
+        );
+      }
+
+      function renderMessages() {
+        const conversationId = state.activeConversationId;
+        if (!conversationId) {
+          els.messages.innerHTML = '<p class="placeholder">Load conversations then select one to start testing.</p>';
+          return;
+        }
+
+        const messages = getMessages(conversationId);
+        const conversation = getConversationById(conversationId);
+        const otherUser = (conversation && conversation.otherUser) || {};
+        if (!messages.length) {
+          els.messages.innerHTML = '<p class="placeholder">No messages in this conversation.</p>';
+          return;
+        }
+
+        const html = messages
+          .map(function (message) {
+            const isSent = String(message.senderId) === String(state.currentUserId);
+            const rowClass = isSent ? "message-row sent" : "message-row received";
+            const sentAt = timeHHMMSS(message.createdAt);
+            const status = formatMessageStatus(message);
+            const statusIcon = isSent ? renderStatusIcon(status) : "";
+            const receivedAvatar = !isSent ? '<div class="message-avatar">' + renderAvatar(otherUser, 24) + "</div>" : "";
+            const attachment = renderMessageAttachment(message);
+
+            return (
+              '<div class="' + rowClass + '">' +
+                receivedAvatar +
+                '<div class="message-bubble">' +
+                  '<p class="message-content">' + escapeHtml(message.content || "") + "</p>" +
+                  attachment +
+                  '<div class="message-meta">' +
+                    "<span>" + sentAt + "</span>" +
+                    statusIcon +
+                  "</div>" +
+                "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+
+        els.messages.innerHTML = html;
+        els.messages.scrollTop = els.messages.scrollHeight;
+      }
+
+      function showTyping(show) {
+        els.typingIndicator.classList.toggle("hidden", !show);
+      }
+
+      function resetUnread(conversationId) {
+        state.unreadByConversation.set(conversationId, 0);
+      }
+
+      function increaseUnread(conversationId) {
+        const current = state.unreadByConversation.get(conversationId) || 0;
+        state.unreadByConversation.set(conversationId, current + 1);
+      }
+
+      function stopTyping(emitToServer) {
+        if (state.typingTimer) {
+          clearTimeout(state.typingTimer);
+          state.typingTimer = null;
+        }
+        if (emitToServer && state.typingSent && state.connected && state.activeConversationId) {
+          state.socket.emit(SOCKET_EVENTS.CHAT_STOP_TYPING, { conversationId: state.activeConversationId });
+        }
+        state.typingSent = false;
+      }
+
+      function handleTypingInput() {
+        if (!state.connected || !state.activeConversationId) return;
+
+        if (!state.typingSent) {
+          state.socket.emit(SOCKET_EVENTS.CHAT_TYPING, { conversationId: state.activeConversationId });
+          state.typingSent = true;
+        }
+
+        if (state.typingTimer) {
+          clearTimeout(state.typingTimer);
+        }
+
+        state.typingTimer = setTimeout(function () {
+          if (state.connected && state.activeConversationId) {
+            state.socket.emit(SOCKET_EVENTS.CHAT_STOP_TYPING, { conversationId: state.activeConversationId });
+          }
+          state.typingSent = false;
+          state.typingTimer = null;
+        }, 1500);
+      }
+
+      async function markMessageRead(messageId) {
+        const response = await apiRequest("/api/v1/chat/messages/" + encodeURIComponent(messageId) + "/read", {
+          method: "PATCH"
+        });
+
+        if (response && response.data) {
+          updateMessageStatus(response.data.id, "read", "readAt", response.data.readAt || new Date().toISOString());
+        }
+      }
+
+      async function markOpenedConversationMessagesAsRead(conversationId) {
+        const messages = await fetchAllMessagesForConversation(conversationId);
+        const unread = messages.filter(function (message) {
+          return (
+            String(message.receiverId) === String(state.currentUserId) &&
+            message.status !== "read"
+          );
+        });
+
+        if (!unread.length) {
+          resetUnread(conversationId);
+          renderConversations();
+          return;
+        }
+
+        await Promise.all(
+          unread.map(function (message) {
+            return markMessageRead(message.id).catch(function (error) {
+              appendLog("API_ERROR", {
+                action: "mark-read",
+                messageId: message.id,
+                message: error.message
+              });
+            });
+          })
+        );
+
+        resetUnread(conversationId);
+        renderConversations();
+        renderMessages();
+        await loadConversations();
+      }
+
+      async function loadConversations() {
+        const response = await apiRequest("/api/v1/chat/conversations");
+        const conversations = Array.isArray(response && response.data) ? response.data : [];
+        state.conversations = conversations;
+        state.unreadByConversation = new Map();
+        await hydrateUnreadCounts(conversations);
+
+        const activeStillExists = state.activeConversationId && conversations.some(function (conversation) {
+          return conversation.id === state.activeConversationId;
+        });
+
+        if (!activeStillExists) {
+          state.activeConversationId = null;
+          showTyping(false);
+        }
+
+        renderConversations();
+        updateHeader();
+        renderMessages();
+      }
+
+      async function loadMessages(conversationId) {
+        const pageResult = await fetchConversationMessagesPage(conversationId, 1, 100);
+        const messages = pageResult.messages;
+        setMessages(conversationId, messages);
+        renderMessages();
+      }
+
+      async function selectConversation(conversationId) {
+        if (!conversationId) return;
+
+        stopTyping(true);
+        clearAttachmentPreview();
+        state.typingUsers.clear();
+        showTyping(false);
+
+        if (state.connected && state.activeConversationId && state.activeConversationId !== conversationId) {
+          state.socket.emit(SOCKET_EVENTS.CHAT_LEAVE, { conversationId: state.activeConversationId });
+        }
+
+        state.activeConversationId = conversationId;
+        renderConversations();
+        updateHeader();
+        renderMessages();
+
+        if (state.connected) {
+          state.socket.emit(SOCKET_EVENTS.CHAT_JOIN, { conversationId: conversationId });
+        }
+
+        await loadMessages(conversationId);
+        await markOpenedConversationMessagesAsRead(conversationId);
+      }
+
+      async function sendMessage() {
+        if (!state.activeConversationId) {
+          throw new Error("Select a conversation first");
+        }
+
+        const content = (els.messageInput.value || "").trim();
+        if (!content) {
+          throw new Error("Message content cannot be empty");
+        }
+
+        stopTyping(true);
+
+        const response = await apiRequest(
+          "/api/v1/chat/conversations/" + encodeURIComponent(state.activeConversationId) + "/messages",
+          {
+            method: "POST",
+            body: { content: content }
+          }
+        );
+
+        if (response && response.data) {
+          upsertMessage(response.data);
+          renderConversations();
+          renderMessages();
+        }
+
+        els.messageInput.value = "";
+      }
+
+      async function sendAttachment(file) {
+        if (!file) return;
+        if (!state.activeConversationId) {
+          throw new Error("Select a conversation first");
+        }
+
+        const isImage = file.type.startsWith("image/");
+        const isPdf = file.type === "application/pdf";
+        if (!isImage && !isPdf) {
+          throw new Error("Only images and PDF files are supported");
+        }
+
+        setAttachmentPreview(file, "Uploading...");
+        const message = await uploadAttachmentMessage(file);
+        if (message) {
+          upsertMessage(message);
+          renderConversations();
+          renderMessages();
+        }
+        clearAttachmentPreview();
+      }
+
+      async function createConversation() {
+        const otherUserId = (els.otherUserIdInput.value || "").trim();
+        if (!otherUserId) {
+          throw new Error("Other user ID is required");
+        }
+
+        const response = await apiRequest("/api/v1/chat/conversations", {
+          method: "POST",
+          body: { otherUserId: otherUserId }
+        });
+
+        const conversation = response && response.data && response.data.conversation
+          ? response.data.conversation
+          : null;
+
+        await loadConversations();
+        if (conversation && conversation.id) {
+          await selectConversation(conversation.id);
+        }
+      }
+
+      function connectSocket() {
+        ensureAuth();
+
+        if (state.socket) {
+          state.socket.disconnect();
+          state.socket = null;
+          state.connected = false;
+        }
+        if (state.presenceSocket) {
+          state.presenceSocket.disconnect();
+          state.presenceSocket = null;
+        }
+
+        setSocketState("Connecting...", false);
+
+        const socket = io(getApiBase() + "/chat", {
+          transports: ["websocket", "polling"],
+          auth: {
+            token: getToken()
+          },
+          withCredentials: true
+        });
+
+        state.socket = socket;
+
+        const presenceSocket = io(getApiBase(), {
+          transports: ["websocket", "polling"],
+          auth: {
+            token: getToken()
+          },
+          withCredentials: true
+        });
+        state.presenceSocket = presenceSocket;
+
+        presenceSocket.on("connect", function () {
+          appendLog("presence:connect", { socketId: presenceSocket.id });
+          presenceSocket.emit(SOCKET_EVENTS.GET_ONLINE_USERS);
+        });
+
+        presenceSocket.on("connect_error", function (error) {
+          appendLog("presence:connect_error", { message: error.message });
+        });
+
+        presenceSocket.on(SOCKET_EVENTS.ONLINE_USERS_SNAPSHOT, function (payload) {
+          appendLog(SOCKET_EVENTS.ONLINE_USERS_SNAPSHOT, payload);
+          handleOnlineUsersSnapshot(payload);
+        });
+
+        presenceSocket.on(SOCKET_EVENTS.USER_PRESENCE_CHANGED, function (payload) {
+          appendLog(SOCKET_EVENTS.USER_PRESENCE_CHANGED, payload);
+          handlePresenceChanged(payload);
+        });
+
+        socket.on("connect", async function () {
+          state.connected = true;
+          setSocketState("Connected", true);
+          appendLog("socket:connect", { socketId: socket.id });
+
+          if (state.activeConversationId) {
+            socket.emit(SOCKET_EVENTS.CHAT_JOIN, { conversationId: state.activeConversationId });
+          }
+
+          try {
+            await fetchCurrentUserProfile();
+          } catch (error) {
+            appendLog("API_ERROR", { action: "load-profile", message: error.message });
+          }
+
+          loadConversations().catch(function (error) {
+            appendLog("API_ERROR", { action: "load-conversations", message: error.message });
+          });
+        });
+
+        socket.on("disconnect", function (reason) {
+          state.connected = false;
+          setSocketState("Disconnected", false);
+          stopTyping(false);
+          appendLog("socket:disconnect", { reason: reason });
+        });
+
+        socket.on("connect_error", function (error) {
+          state.connected = false;
+          setSocketState("Connect error", false);
+          appendLog("socket:connect_error", { message: error.message });
+        });
+
+        socket.onAny(function (eventName, payload) {
+          appendLog(eventName, payload);
+
+          if (eventName === SOCKET_EVENTS.CHAT_MESSAGE) {
+            const message = payload && payload.message ? payload.message : payload;
+            if (!message || !message.id) return;
+
+            upsertMessage(message);
+
+            if (String(message.senderId) !== String(state.currentUserId)) {
+              if (message.conversationId === state.activeConversationId) {
+                markMessageRead(message.id).catch(function (error) {
+                  appendLog("API_ERROR", { action: "mark-read", message: error.message });
+                });
+                resetUnread(message.conversationId);
+              } else {
+                increaseUnread(message.conversationId);
+              }
+            }
+
+            renderConversations();
+            if (message.conversationId === state.activeConversationId) {
+              renderMessages();
+            }
+          }
+
+          if (eventName === SOCKET_EVENTS.CHAT_DELIVERED && payload && payload.messageId) {
+            updateMessageStatus(payload.messageId, "delivered", "deliveredAt", payload.deliveredAt || new Date().toISOString());
+            renderMessages();
+          }
+
+          if (eventName === SOCKET_EVENTS.CHAT_READ && payload && payload.messageId) {
+            updateMessageStatus(payload.messageId, "read", "readAt", payload.readAt || new Date().toISOString());
+            renderMessages();
+          }
+
+          if (eventName === SOCKET_EVENTS.CHAT_TYPING && payload && payload.conversationId === state.activeConversationId) {
+            if (String(payload.userId) !== String(state.currentUserId)) {
+              state.typingUsers.add(String(payload.userId));
+              showTyping(state.typingUsers.size > 0);
+            }
+          }
+
+          if (eventName === SOCKET_EVENTS.CHAT_STOP_TYPING && payload && payload.conversationId === state.activeConversationId) {
+            state.typingUsers.delete(String(payload.userId));
+            showTyping(state.typingUsers.size > 0);
+          }
+
+        });
+      }
+
+      function disconnectSocket() {
+        stopTyping(true);
+        clearAttachmentPreview();
+        if (state.socket) {
+          state.socket.disconnect();
+          state.socket = null;
+        }
+        if (state.presenceSocket) {
+          state.presenceSocket.disconnect();
+          state.presenceSocket = null;
+        }
+        state.connected = false;
+        setSocketState("Disconnected", false);
+        state.currentUserProfile = null;
+        setCurrentUserInfo({ firstName: "Not", lastName: "connected", role: "guest", profileImage: "" });
+      }
+
+      els.tokenInput.addEventListener("change", function () {
+        const token = getToken();
+        if (token) {
+          localStorage.setItem("accessToken", token);
+        }
+      });
+
+      els.connectBtn.addEventListener("click", function () {
+        if (state.connected || state.socket) {
+          disconnectSocket();
+          return;
+        }
+        try {
+          connectSocket();
+        } catch (error) {
+          appendLog("SOCKET_ERROR", { message: error.message });
+          setSocketState("Disconnected", false);
+        }
+      });
+
+      els.createConversationBtn.addEventListener("click", function () {
+        withLoading(els.createConversationBtn, "Creating...", async function () {
+          await createConversation();
+        }).catch(function (error) {
+          appendLog("API_ERROR", { action: "create-conversation", message: error.message });
+        });
+      });
+
+      els.attachBtn.addEventListener("click", function () {
+        if (!state.activeConversationId) {
+          appendLog("INFO", { message: "Select a conversation first" });
+          return;
+        }
+        els.fileInput.click();
+      });
+
+      els.fileInput.addEventListener("change", function () {
+        const file = els.fileInput.files && els.fileInput.files[0] ? els.fileInput.files[0] : null;
+        if (!file) return;
+
+        sendAttachment(file).catch(function (error) {
+          appendLog("API_ERROR", { action: "send-attachment", message: error.message });
+          setAttachmentPreview(file, "Upload failed");
+        }).finally(function () {
+          els.fileInput.value = "";
+        });
+      });
+
+      els.conversationList.addEventListener("click", function (event) {
+        const item = event.target.closest("[data-conversation-id]");
+        if (!item) return;
+
+        selectConversation(item.getAttribute("data-conversation-id")).catch(function (error) {
+          appendLog("API_ERROR", { action: "select-conversation", message: error.message });
+        });
+      });
+
+      els.refreshMessagesBtn.addEventListener("click", function () {
+        if (!state.activeConversationId) {
+          appendLog("INFO", { message: "Select a conversation first" });
+          return;
+        }
+
+        withLoading(els.refreshMessagesBtn, "Refreshing...", async function () {
+          await loadMessages(state.activeConversationId);
+          await markOpenedConversationMessagesAsRead(state.activeConversationId);
+        }).catch(function (error) {
+          appendLog("API_ERROR", { action: "refresh-messages", message: error.message });
+        });
+      });
+
+      els.sendBtn.addEventListener("click", function () {
+        withLoading(els.sendBtn, "Sending...", async function () {
+          await sendMessage();
+        }).catch(function (error) {
+          appendLog("API_ERROR", { action: "send-message", message: error.message });
+        });
+      });
+
+      els.messageInput.addEventListener("input", function () {
+        handleTypingInput();
+      });
+
+      els.messageInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          els.sendBtn.click();
+        }
+      });
+
+      els.clearLogBtn.addEventListener("click", function () {
+        els.logBody.textContent = "";
+      });
+
+      window.addEventListener("beforeunload", function () {
+        disconnectSocket();
+      });
+
+      setSocketState("Disconnected", false);
+      setCurrentUserInfo({ firstName: "Not", lastName: "connected", role: "guest", profileImage: "" });
+      renderConversations();
+      updateHeader();
+      renderMessages();
+      showTyping(false);
+      appendLog("INIT", { message: "Sahtak chat tester ready" });
+
+      if (getToken()) {
+        try {
+          connectSocket();
+        } catch (error) {
+          appendLog("SOCKET_ERROR", { message: error.message });
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

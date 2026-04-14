@@ -1,8 +1,10 @@
+const http = require('http');
 const app = require('./src/app.js');
 const config = require('./src/config/config.js');
 const connectDB = require('./src/config/database.js');
 const logger = require('./src/core/logger.js');
 const initJobs = require('./src/jobs/index');
+const { initializeSocket } = require('./src/socket/socket.manager');
 
 let server;
 
@@ -75,8 +77,12 @@ const startServer = async () => {
         logger.info('Initializing scheduled jobs...');
         initJobs();
 
+        const httpServer = http.createServer(app);
+        const io = initializeSocket(httpServer);
+        app.set('io', io);
+
         const port = config.PORT;
-        server = app.listen(port, () => {
+        server = httpServer.listen(port, () => {
             logger.info(`Server running successfully!`, {
                 port: port,
                 environment: config.nodeEnv || 'development',

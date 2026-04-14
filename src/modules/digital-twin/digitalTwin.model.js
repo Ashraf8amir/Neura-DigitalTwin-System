@@ -223,7 +223,6 @@ const digitalTwinSchema = new mongoose.Schema({
 });
 
 
-digitalTwinSchema.index({ patientId: 1 });
 digitalTwinSchema.index({ 'currentState.lastUpdated': -1 });
 digitalTwinSchema.index({ isActive: 1 });
 
