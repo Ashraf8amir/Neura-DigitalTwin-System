@@ -289,6 +289,7 @@ class DigitalTwinService {
             bloodType: patient.bloodType || 'unknown',
             weight: patient.weight ?? 'unknown',
             height: patient.height ?? 'unknown',
+            bmi: patient.bmi ? Number(patient.weight / (patient.height / 100) ** 2).toFixed(1) : 'unknown',
             smoking: lifestyle.smokingStatus || 'unknown',
             alcohol: lifestyle.alcoholConsumption || 'unknown',
             exercise: lifestyle.physicalActivity || 'unknown',

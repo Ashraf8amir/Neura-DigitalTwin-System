@@ -36,13 +36,15 @@ exports.digitalTwinConstants = Object.freeze({
 
     organTypes: {
         HEART: 'heart',
-        LUNGS: 'lungs',
+        LUNG: 'lung',
         KIDNEYS: 'kidneys',
         LIVER: 'liver',
         BRAIN: 'brain',
         PANCREAS: 'pancreas',
         STOMACH: 'stomach',
-        INTESTINES: 'intestines'
+        INTESTINES_LARGE: 'intestinesLarge',
+        INTESTINES_SMALL: 'intestinesSmall',
+        BlaDDER: 'bladder'
     },
 
     organImpactTypes: {

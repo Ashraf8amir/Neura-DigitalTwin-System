@@ -15,7 +15,7 @@ Analyze the patient profile and generate a baseline health assessment.
 
 Basic Info:
 Age: ${profile.age} | Gender: ${profile.gender} | Blood Type: ${profile.bloodType}
-Weight: ${profile.weight}kg | Height: ${profile.height}cm
+Weight: ${profile.weight}kg | Height: ${profile.height}cm | BMI: ${profile.bmi?.toFixed(1) || 'unknown'}
 
 Medical History:
 Chronic Diseases: ${formatList(profile.chronicDiseases)}
@@ -50,7 +50,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, no extra text
 },
 "affectedOrgans": [
 {
-"organ": "heart | lungs | kidneys | liver | brain | pancreas | stomach | intestines",
+"organ": "heart | lung | kidneys | liver | brain | pancreas | stomach | intestinesLarge | intestinesSmall | bladder",
 "impact_type": "primary | secondary",
 "risk_level": 0.0,
 "damage_intensity": 0.0
@@ -115,7 +115,7 @@ Liver disease     → liver (primary), stomach (secondary)
 COPD/respiratory  → lungs (primary), heart (secondary)
 Obesity           → heart (primary), liver (secondary), kidneys (secondary)
 Kidney disease    → kidneys (primary), heart (secondary)
-Use ONLY: heart, lungs, kidneys, liver, brain, pancreas, stomach, intestines
+Use ONLY: heart, lung, kidneys, liver, brain, pancreas, stomach, intestinesLarge, intestinesSmall, bladder
 If no chronic diseases → return empty affectedOrgans array
 
 [Risk Scores]
@@ -181,7 +181,7 @@ this:
 },
 "affectedOrgans": [
 {
-"organ": "heart | lungs | kidneys | liver | brain | pancreas | stomach | intestines",
+"organ": "heart | lung | kidneys | liver | brain | pancreas | stomach | intestinesLarge | intestinesSmall | bladder",
 "impact_type": "primary | secondary",
 "risk_level": 0.0,
 "damage_intensity": 0.0
@@ -255,6 +255,7 @@ Only return fields that need updating`;
 
 const buildWhatIfSimulationPrompt = (patientProfile, twin, scenario) => {
     const score = twin?.currentState?.overallHealthScore?.score ?? 0;
+    const vitalSigns = twin?.currentState?.vitalSigns || {};
     const category = twin?.currentState?.overallHealthScore?.category ?? digitalTwinConstants.categoryHealthScore.FAIR;
     const affectedOrgans = JSON.stringify(twin?.currentState?.affectedOrgans || []);
     const cardiovascularRisk = twin?.riskScores?.cardiovascularRisk || {};
@@ -267,12 +268,16 @@ Your job is to simulate what would happen to their health if this scenario occur
 This is a projection only — nothing will be saved.
 === CURRENT PATIENT STATUS ===
 
-Age: ${patientProfile.age} | Gender: ${patientProfile.gender} | Blood Type: ${patientProfile.bloodType}
+Age: ${patientProfile.age} | Gender: ${patientProfile.gender} | Blood Type: ${patientProfile.bloodType} 
+
+medical history:
+
 Chronic Diseases: ${patientProfile.chronicDiseases}
 Current Medications: ${patientProfile.currentMedications}
 Known Allergies: ${patientProfile.allergies}
 Previous Surgeries: ${patientProfile.previousSurgeries}
 Family Medical History: ${patientProfile.familyMedicalHistory}
+
 Lifestyle:
 
 Smoking: ${patientProfile.smoking}
@@ -285,6 +290,7 @@ Stress Level: ${patientProfile.stressLevel}
 === CURRENT DIGITAL TWIN STATE ===
 
 Health Score: ${score} (${category})
+vitals: ${vitalSigns ? JSON.stringify(vitalSigns) : 'No data'}
 Affected Organs: ${affectedOrgans}
 Cardiovascular Risk: ${cardiovascularRisk.level || 'low'} (score: ${cardiovascularRisk.score ?? 0})
 Diabetes Risk: ${diabetesRisk.level || 'low'} (score: ${diabetesRisk.score ?? 0})
@@ -314,6 +320,8 @@ Return ONLY a valid JSON object — no markdown, no explanation, no extra text
 "category": "poor | fair | good | very_good | excellent",
 "change": 0
 },
+"bmi": 0.0,
+"bmi_category": "underweight | normal | overweight | obese",
 "affected_organs": [
 {
 "organ": "heart | lungs | kidneys | liver | brain | pancreas | stomach | intestines",
@@ -356,6 +364,19 @@ sleep deprivation     → -5 to -10
 high stress           → -5 to -8
 Never go below 0 or above 100
 Categories: 0-20 poor, 21-40 fair, 41-60 good, 61-80 very_good, 81-100 excellent
+
+[bmi_calculation_logic]
+- ALWAYS calculate a projected BMI. Never return 0.
+- Use current height/weight from profile. If missing, assume (175cm / 70kg).
+- Scenario Interpretation:
+  1. EXPLICIT: Use the exact weight/height mentioned.
+  2. INFERRED: If the scenario is "eating sweets" or "running", assume this happens over 2 months.
+- Estimated Shifts for Inferred Scenarios:
+  - Unhealthy habits (sweets, junk food, sedentary): +2kg to +5kg.
+  - Healthy habits (running, clean diet, gym): -2kg to -5kg.
+- Logic: Current Weight -> Apply Shift -> Calculate New BMI -> Determine Category.
+- Categories: Underweight (<18.5), Normal (18.5-24.9), Overweight (25-29.9), Obese (30+).
+ 
 
 [affected_organs]
 
@@ -411,6 +432,11 @@ What should the patient do given this scenario result
 - Explain the logic behind the primary organ impact based on the patient's chronic conditions.
 - End with a brief, supportive closing statement.
 
+[timeline]
+- Only include if scenario has a clear timeframe (e.g., "after 6 months of this habit")
+- Otherwise, leave empty string.
+
+
 [General]
 
 Be conservative — flag risks rather than ignore them
@@ -450,12 +476,16 @@ const validateDTUpdateJSON = (payload, options = {}) => {
         }
 
         if (requireFull) {
-            const requiredSections = ['currentState', 'riskScores', 'riskPredictions', 'recommendations', 'alerts'];
+            const requiredSections = ['currentState', 'riskScores', 'riskPredictions', 'recommendations', 'alerts', 'bmi'];
             for (const section of requiredSections) {
                 if (payload[section] === undefined) {
                     throw new Error(`Missing required section: ${section}`);
                 }
             }
+        }
+
+        if (payload.bmi !== undefined && typeof payload.bmi !== 'number') {
+            throw new Error('bmi must be a number');
         }
 
         if (payload.currentState !== undefined) {
