@@ -32,7 +32,9 @@ class AiVoiceService {
         if (config.pineconeApiKey && config.pineconeIndex) {
             try {
                 this.pinecone = new Pinecone({ apiKey: config.pineconeApiKey });
-                this.pineconeIndex = this.pinecone.index(config.pineconeIndex);
+                this.pineconeIndex = config.pineconeHost
+                    ? this.pinecone.index(config.pineconeIndex, config.pineconeHost)
+                    : this.pinecone.index(config.pineconeIndex);
                 logger.info('Pinecone client initialized', { index: config.pineconeIndex });
             } catch (error) {
                 logger.error('Failed to initialize Pinecone', { error: error.message });
@@ -111,35 +113,69 @@ class AiVoiceService {
     async getPreviousVisits(patientId) {
         if (!this.pineconeIndex) return '';
 
-        const results = await this.pineconeIndex
-        .namespace(aiVoiceConstants.PINECONE_NAMESPACE)
-        .searchRecords({
-            query: {
-                top_k: 3,
-                inputs: {
-                    text: 'Patient medical visit history'
-                },
-                filter: {
-                    patientId: patientId.toString()
-                }
+        try {
+            const results = await this.pineconeIndex
+                .namespace(aiVoiceConstants.PINECONE_NAMESPACE)
+                .searchRecords({
+                    query: {
+                        topK: aiVoiceConstants.PINECONE_TOP_K,  
+                        inputs: {
+                            text: `patient ${patientId} medical visit diagnosis symptoms treatment history`
+                        },
+                        filter: {
+                            patientId: { $eq: patientId.toString() }
+                        }
+                    },
+                    fields: [
+                        'patientId',
+                        'diagnosis',
+                        'symptoms',
+                        'summary',
+                        'treatment_plan',
+                        'follow_up',
+                        'urgency_level',
+                        'createdAt'
+                    ]
+                });
+
+            if (!results.result?.hits || results.result.hits.length === 0) {
+                logger.debug('No previous visits found in Pinecone', { patientId });
+                return '';
             }
-        });
 
-        if (!results.result?.hits || results.result?.hits.length === 0) return '';
+            logger.info('Found previous visits in Pinecone', {
+                patientId,
+                count: results.result.hits.length
+            });
 
-        return results.result?.hits
-            .map((hit, index) => {
-                const fields = hit.fields;
-                const visitNum = index + 1;
-                const date = fields.createdAt || 'Unknown date';
-                const diagnosis = fields.diagnosis || 'N/A';
-                const symptoms = fields.symptoms || 'N/A';
-                const summary = fields.summary || 'N/A';
-                return 'Visit ' + visitNum + ' (' + date + '):\nDiagnosis: ' + diagnosis + '\nSymptoms: ' + symptoms + '\nSummary: ' + summary;
-            })
-            .join('\n\n---\n\n');
+            return results.result.hits
+                .map((hit, index) => {
+                    const f = hit.fields;
+                    const visitNum = index + 1;
+                    const date = f.createdAt
+                        ? new Date(f.createdAt).toLocaleDateString('en-US')
+                        : 'Unknown date';
+
+                    return [
+                        `Visit ${visitNum} (${date}):`,
+                        `Diagnosis: ${f.diagnosis || 'N/A'}`,
+                        `Symptoms: ${f.symptoms || 'N/A'}`,
+                        `Treatment: ${f.treatment_plan || 'N/A'}`,
+                        `Follow-up: ${f.follow_up || 'N/A'}`,
+                        `Urgency: ${f.urgency_level || 'routine'}`,
+                        `Summary: ${f.summary || 'N/A'}`
+                    ].join('\n');
+                })
+                .join('\n\n---\n\n');
+        } catch (error) {
+            logger.error('Failed to fetch previous visits from Pinecone', {
+                error: error.message,
+                patientId
+            });
+            return '';
+        }
     }
-
+ 
     async generateSummary(transcript, patientInfo, previousVisits, retryCount = 0, useFallback = false) {
         if (!config.groqApiKey) {
             throw new AppError(500, HTTP_STATUS_TEXT.ERROR, 'LLM service not configured');
@@ -219,15 +255,16 @@ class AiVoiceService {
 
         const vectorId = 'visit_' + String(patientId) + '_' + Date.now();
         const embeddingText = [
-            'Patient visit summary:',
-            summary.summary || '',
-            'Diagnosis: ' + (summary.diagnosis || 'None'),
-            'Symptoms: ' + (Array.isArray(summary.symptoms) ? summary.symptoms.join(', ') : ''),
-            'Treatment: ' + (summary.treatment_plan || 'None'),
-            'Follow-up: ' + (summary.follow_up || 'None'),
-            'Alerts: ' + (JSON.stringify(summary.alerts) || '{}'),
-            'Urgency: ' + (summary.urgency_level || 'routine')
-        ].join(' ');
+            `Patient ID: ${patientId}`,
+            `Diagnosis: ${summary.diagnosis || 'None'}`,
+            `Symptoms: ${Array.isArray(summary.symptoms) ? summary.symptoms.join(', ') : 'None'}`,
+            `Treatment: ${typeof summary.prescription === 'object'
+                ? JSON.stringify(summary.prescription)
+                : (summary.prescription || 'None')}`,
+            `Follow-up: ${summary.follow_up || 'None'}`,
+            `Urgency: ${summary.urgency_level || 'routine'}`,
+            `Summary: ${summary.summary || 'None'}`
+        ].join('. ');
 
         try {
             const recordToUpsert = {
@@ -239,7 +276,7 @@ class AiVoiceService {
                 summary: summary.summary || '',
                 diagnosis: summary.diagnosis || '',
                 symptoms: Array.isArray(summary.symptoms) ? summary.symptoms.join(', ') : '',
-                treatment_plan: typeof summary.treatment_plan === 'object' ? JSON.stringify(summary.treatment_plan) : (summary.treatment_plan || ''),
+                treatment_plan: typeof summary.prescription === 'object' ? JSON.stringify(summary.prescription) : (summary.prescription || summary.treatment_plan || ''),
                 follow_up: typeof summary.follow_up === 'object' ? JSON.stringify(summary.follow_up) : (summary.follow_up || ''),
                 alerts: JSON.stringify(summary.alerts || {}),
                 urgency_level: summary.urgency_level || 'routine',
@@ -252,8 +289,11 @@ class AiVoiceService {
 
             logger.info('Visit vector saved to Pinecone', { vectorId: vectorId, patientId: patientId, doctorId: doctorId });
         } catch (error) {
-            logger.error('Failed to upsert to Pinecone', { error: error.message });
-            throw error;
+            logger.error('Failed to save visit vector to Pinecone - continuing without RAG save', {
+                error: error.message,
+                patientId,
+                vectorId
+            });
         }
     }
 }

@@ -42,6 +42,7 @@ const config = {
     openRouterApiKey: process.env.OPENROUTER_API_KEY,
     pineconeApiKey: process.env.PINECONE_API_KEY,
     pineconeIndex: process.env.PINECONE_INDEX,
+    pineconeHost: process.env.PINECONE_HOST,
     groqApiKey: process.env.GROQ_API_KEY,
     grokApiKey: process.env.GROQ_API_KEY,
     agoraAppId: process.env.AGORA_APP_ID,
