@@ -13,6 +13,8 @@ const cloudinaryService = require('../../config/cloudinary');
 const MedicalRecord = require('../medical-records/medicalRecord.model');
 const axios = require('axios');
 const config = require('../../config/config');
+const cacheService = require('../../cache/cache.service');
+const appointmentCache = require('./appointments.cache');
 
 
 class AppointmentService {
@@ -21,49 +23,70 @@ class AppointmentService {
     appointmentTypes = appointmentConstants.APPOINTMENT_TYPES;
     paymentStatuses = appointmentConstants.PAYMENT_STATUSES;
 
+    async clearAppointmentCaches({ appointmentId, doctorId, patientId }) {
+        await appointmentCache.clearAppointmentScopedCache({
+            appointmentId,
+            doctorId,
+            patientId
+        });
+    }
+
     async getAvailableSlots(doctorId, date, clinicId, isTelemedicine = false) {
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
-        
-        const dayName = startOfDay.toLocaleDateString('en-US', { weekday: 'long' });
-        const isToday = new Date().toDateString() === startOfDay.toDateString();
-
-        const doctor = await Doctor.findById(doctorId);
-        if (!doctor) throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Doctor not found');
-
-        let workingHours = [];
-        let duration = 30;
-
-        if (isTelemedicine) {
-            workingHours = doctor.telemedicine.availableHours;
-            duration = doctor.telemedicine.consultationDuration;
-        } else {
-            const clinic = doctor.clinicInfo.id(clinicId);
-            if (!clinic) throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Clinic not found');
-            workingHours = clinic.availableHours;
-            duration = clinic.consultationDuration;
-        }
-
-        const dayShifts = workingHours.filter(h => h.day === dayName);
-        if (!dayShifts.length) return [];
-
-        const query = {
-            doctor: doctorId,
-            scheduledDate: { $gte: startOfDay, $lte: endOfDay },
-            status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] }
-        };
-        const existingAppointments = await Appointment.find(query).select('scheduledTime');
-
-        let allSlots = [];
-        dayShifts.forEach(shift => {
-            const slots = AppointmentHelpers.calculateAvailableSlots(shift, existingAppointments, duration, isToday);
-            allSlots = [...allSlots, ...slots];
+        const cacheKey = appointmentCache.getAvailableSlotsKey({
+            doctorId,
+            date,
+            clinicId,
+            isTelemedicine
         });
 
-        return allSlots.sort((a, b) => a.localeCompare(b)); 
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                const startOfDay = new Date(date);
+                startOfDay.setHours(0, 0, 0, 0);
+
+                const endOfDay = new Date(date);
+                endOfDay.setHours(23, 59, 59, 999);
+
+                const dayName = startOfDay.toLocaleDateString('en-US', { weekday: 'long' });
+                const isToday = new Date().toDateString() === startOfDay.toDateString();
+
+                const doctor = await Doctor.findById(doctorId);
+                if (!doctor) throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Doctor not found');
+
+                let workingHours = [];
+                let duration = 30;
+
+                if (isTelemedicine) {
+                    workingHours = doctor.telemedicine.availableHours;
+                    duration = doctor.telemedicine.consultationDuration;
+                } else {
+                    const clinic = doctor.clinicInfo.id(clinicId);
+                    if (!clinic) throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Clinic not found');
+                    workingHours = clinic.availableHours;
+                    duration = clinic.consultationDuration;
+                }
+
+                const dayShifts = workingHours.filter(h => h.day === dayName);
+                if (!dayShifts.length) return [];
+
+                const query = {
+                    doctor: doctorId,
+                    scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+                    status: { $in: [this.statuses.PENDING, this.statuses.CONFIRMED] }
+                };
+                const existingAppointments = await Appointment.find(query).select('scheduledTime');
+
+                let allSlots = [];
+                dayShifts.forEach((shift) => {
+                    const slots = AppointmentHelpers.calculateAvailableSlots(shift, existingAppointments, duration, isToday);
+                    allSlots = [...allSlots, ...slots];
+                });
+
+                return allSlots.sort((a, b) => a.localeCompare(b));
+            },
+            appointmentCache.ttl.availableSlots
+        );
     }
 
     async createAppointment(appointmentData, user) {
@@ -159,6 +182,12 @@ class AppointmentService {
             { path: 'doctor', select: 'firstName lastName professionalInfo.primarySpecialization' },
             { path: 'patient', select: 'firstName lastName phone email dateOfBirth address' }
             ]);
+
+            await this.clearAppointmentCaches({
+                appointmentId: createdAppointment[0]._id,
+                doctorId,
+                patientId
+            });
         
         
             return {
@@ -177,201 +206,238 @@ class AppointmentService {
     };
 
     async getAllAppointments(user, filters = {}, options = {}) {
-        const {
-            page = 1,
-            limit = 10,
-            sortBy = 'scheduledDate',
-            sortOrder = 'desc',
-        } = options;
+        const cacheKey = appointmentCache.getAppointmentsListKey({
+            userId: user.id,
+            role: user.role,
+            filters,
+            options
+        });
 
-        const query = AppointmentHelpers.buildQueryByRole(user, filters);
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                const {
+                    page = 1,
+                    limit = 10,
+                    sortBy = 'scheduledDate',
+                    sortOrder = 'desc',
+                } = options;
 
-        const skip = (page - 1) * limit;
-        const sortOptions = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+                const query = AppointmentHelpers.buildQueryByRole(user, filters);
 
-        let appointmentsQuery = Appointment.find(query)
-            .sort(sortOptions)
-            .skip(skip)
-            .limit(parseInt(limit))
-            .lean()
-            .populate([
-                {
-                    path: 'doctor',
-                    select: 'firstName lastName professionalInfo.primarySpecialization'
-                },
-                {
-                    path: 'patient',
-                    select: 'firstName lastName phone email dateOfBirth address'
-                }
-            ]);
+                const skip = (page - 1) * limit;
+                const sortOptions = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
-        const [appointments, total] = await Promise.all([
-            appointmentsQuery,
-            Appointment.countDocuments(query)
-        ]);
+                const appointmentsQuery = Appointment.find(query)
+                    .sort(sortOptions)
+                    .skip(skip)
+                    .limit(parseInt(limit))
+                    .lean()
+                    .populate([
+                        {
+                            path: 'doctor',
+                            select: 'firstName lastName professionalInfo.primarySpecialization'
+                        },
+                        {
+                            path: 'patient',
+                            select: 'firstName lastName phone email dateOfBirth address'
+                        }
+                    ]);
 
-        const finalData = appointments.map(doc => AppointmentHelpers.formatAppointmentResponse(doc));
+                const [appointments, total] = await Promise.all([
+                    appointmentsQuery,
+                    Appointment.countDocuments(query)
+                ]);
 
-        return {
-            data: finalData,
-            pagination: getPagination(total, page, limit)
-        };
+                const finalData = appointments.map(doc => AppointmentHelpers.formatAppointmentResponse(doc));
+
+                return {
+                    data: finalData,
+                    pagination: getPagination(total, page, limit)
+                };
+            },
+            appointmentCache.ttl.list
+        );
 
     }
 
     async countAppointments(user) {
-        const baseQuery = {};
+        const cacheKey = appointmentCache.getAppointmentCountKey({
+            userId: user.id,
+            role: user.role
+        });
 
-        if (user.role === ROLE.DOCTOR)  baseQuery.doctor = new mongoose.Types.ObjectId(user.id);
-        else if (user.role === ROLE.PATIENT) baseQuery.patient = new mongoose.Types.ObjectId(user.id);
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                const baseQuery = {};
 
-        const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
-        const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
-        const now = new Date();
+                if (user.role === ROLE.DOCTOR) baseQuery.doctor = new mongoose.Types.ObjectId(user.id);
+                else if (user.role === ROLE.PATIENT) baseQuery.patient = new mongoose.Types.ObjectId(user.id);
 
-        const stats = await Appointment.aggregate([
-            { $match: baseQuery },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: 1 },
-                    pending: { $sum: { $cond: [{ $eq: ["$status", this.statuses.PENDING] }, 1, 0] } },
-                    confirmed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CONFIRMED] }, 1, 0] } },
-                    completed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.COMPLETED] }, 1, 0] } },
-                    cancelled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CANCELLED] }, 1, 0] } },
-                    today: { 
-                        $sum: { 
-                            $cond: [
-                                { $and: [{ $gte: ["$scheduledDate", todayStart] }, { $lt: ["$scheduledDate", todayEnd] }] }, 1, 0
-                            ] 
-                        } 
-                    },
-                    upcoming: { 
-                        $sum: { 
-                            $cond: [
-                                { $and: [ { $gte: ["$scheduledDate", now] }, { $in: ["$status", [this.statuses.PENDING, this.statuses.CONFIRMED]] } ]}, 1, 0
-                            ] 
+                const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+                const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
+                const now = new Date();
+
+                const stats = await Appointment.aggregate([
+                    { $match: baseQuery },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: 1 },
+                            pending: { $sum: { $cond: [{ $eq: ["$status", this.statuses.PENDING] }, 1, 0] } },
+                            confirmed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CONFIRMED] }, 1, 0] } },
+                            completed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.COMPLETED] }, 1, 0] } },
+                            cancelled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CANCELLED] }, 1, 0] } },
+                            today: {
+                                $sum: {
+                                    $cond: [
+                                        { $and: [{ $gte: ["$scheduledDate", todayStart] }, { $lt: ["$scheduledDate", todayEnd] }] }, 1, 0
+                                    ]
+                                }
+                            },
+                            upcoming: {
+                                $sum: {
+                                    $cond: [
+                                        { $and: [{ $gte: ["$scheduledDate", now] }, { $in: ["$status", [this.statuses.PENDING, this.statuses.CONFIRMED]] }] }, 1, 0
+                                    ]
+                                }
+                            },
+                            past: { $sum: { $cond: [{ $lt: ["$scheduledDate", now] }, 1, 0] } }
                         }
-                    },
-                    past: { $sum: { $cond: [{ $lt: ["$scheduledDate", now] }, 1, 0] } }
-                }
-            }
-        ])
-        const r = stats[0] || {
-            total: 0, pending: 0, confirmed: 0, completed: 0, cancelled: 0,
-            today: 0, upcoming: 0, past: 0
-        };
+                    }
+                ]);
 
-        return {
-            total: r.total,
-            byStatus: {
-                    pending: r.pending,
-                    confirmed: r.confirmed,
-                    completed: r.completed,
-                    cancelled: r.cancelled
-                },
-            byTime: {
-                today: r.today,
-                upcoming: r.upcoming,
-                past: r.past
-            }
-        };
+                const r = stats[0] || {
+                    total: 0, pending: 0, confirmed: 0, completed: 0, cancelled: 0,
+                    today: 0, upcoming: 0, past: 0
+                };
+
+                return {
+                    total: r.total,
+                    byStatus: {
+                        pending: r.pending,
+                        confirmed: r.confirmed,
+                        completed: r.completed,
+                        cancelled: r.cancelled
+                    },
+                    byTime: {
+                        today: r.today,
+                        upcoming: r.upcoming,
+                        past: r.past
+                    }
+                };
+            },
+            appointmentCache.ttl.count
+        );
 
     }
 
     async getAppointmentStatistics(userId, userRole, period = 'month') {
-        let startDate = new Date(new Date().setHours(0, 0, 0, 0));
+        const cacheKey = appointmentCache.getAppointmentStatisticsKey({
+            userId,
+            role: userRole,
+            period
+        });
 
-        switch (period) {
-            case 'today': break;
-            case 'week': startDate.setDate(startDate.getDate() - 7); break;
-            case 'month': startDate.setMonth(startDate.getMonth() - 1); break;
-            case 'year': startDate.setFullYear(startDate.getFullYear() - 1); break;
-            case 'all': startDate = new Date('2000-01-01'); break;
-            default: throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 
-                'Invalid period value. Valid values are: today, week, month, year, all'
-            );
-        }
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                let startDate = new Date(new Date().setHours(0, 0, 0, 0));
 
-        const query = { createdAt: { $gte: startDate }};
-        if (userRole === ROLE.DOCTOR) query.doctor = new mongoose.Types.ObjectId(userId);
-        else if (userRole === ROLE.PATIENT) query.patient = new mongoose.Types.ObjectId(userId);
+                switch (period) {
+                    case 'today': break;
+                    case 'week': startDate.setDate(startDate.getDate() - 7); break;
+                    case 'month': startDate.setMonth(startDate.getMonth() - 1); break;
+                    case 'year': startDate.setFullYear(startDate.getFullYear() - 1); break;
+                    case 'all': startDate = new Date('2000-01-01'); break;
+                    default: throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST,
+                        'Invalid period value. Valid values are: today, week, month, year, all'
+                    );
+                }
 
-        const statsArray = await Appointment.aggregate([
-            { $match: query },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: 1 },
+                const query = { createdAt: { $gte: startDate } };
+                if (userRole === ROLE.DOCTOR) query.doctor = new mongoose.Types.ObjectId(userId);
+                else if (userRole === ROLE.PATIENT) query.patient = new mongoose.Types.ObjectId(userId);
 
-                    pending: { $sum: { $cond: [{ $eq: ["$status", this.statuses.PENDING] }, 1, 0]}},
-                    confirmed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CONFIRMED] }, 1, 0] } },
-                    checkedIn: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CHECKEDIN] }, 1, 0] } },
-                    inProgress: { $sum: { $cond: [{ $eq: ["$status", this.statuses.INPROGRESS] }, 1, 0] } },
-                    completed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.COMPLETED] }, 1, 0] } },
-                    cancelled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CANCELLED] }, 1, 0] } },
+                const statsArray = await Appointment.aggregate([
+                    { $match: query },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: 1 },
 
-                    inPerson: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.IN_PERSON] }, 1, 0] } },
-                    telemedicine: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.TELEMEDICINE] }, 1, 0] } },
-                    followUp: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.FOLLOW_UP] }, 1, 0] } },
-                    emergency: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.EMERGENCY] }, 1, 0] } },
-                    consultation: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.CONSULTATION] }, 1, 0] } },
+                            pending: { $sum: { $cond: [{ $eq: ["$status", this.statuses.PENDING] }, 1, 0] } },
+                            confirmed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CONFIRMED] }, 1, 0] } },
+                            checkedIn: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CHECKEDIN] }, 1, 0] } },
+                            inProgress: { $sum: { $cond: [{ $eq: ["$status", this.statuses.INPROGRESS] }, 1, 0] } },
+                            completed: { $sum: { $cond: [{ $eq: ["$status", this.statuses.COMPLETED] }, 1, 0] } },
+                            cancelled: { $sum: { $cond: [{ $eq: ["$status", this.statuses.CANCELLED] }, 1, 0] } },
 
-                    totalRevenue: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PAID] }, "$payment.totalAmount", 0] } },
-                    paidCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PAID] }, 1, 0] } },
-                    paymentPendingCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PENDING] }, 1, 0] } },
-                    paymentCancelledCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.CANCELLED] }, 1, 0] } },
+                            inPerson: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.IN_PERSON] }, 1, 0] } },
+                            telemedicine: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.TELEMEDICINE] }, 1, 0] } },
+                            followUp: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.FOLLOW_UP] }, 1, 0] } },
+                            emergency: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.EMERGENCY] }, 1, 0] } },
+                            consultation: { $sum: { $cond: [{ $eq: ["$appointmentType", this.appointmentTypes.CONSULTATION] }, 1, 0] } },
 
-                    avgRating: { $avg: "$review.rating" },
-                    ratingCount: { $sum: { $cond: [{ $gt: ["$review.rating", 0] }, 1, 0] } },
-                    star1: { $sum: { $cond: [{ $eq: ["$review.rating", 1] }, 1, 0] } },
-                    star2: { $sum: { $cond: [{ $eq: ["$review.rating", 2] }, 1, 0] } },
-                    star3: { $sum: { $cond: [{ $eq: ["$review.rating", 3] }, 1, 0] } },
-                    star4: { $sum: { $cond: [{ $eq: ["$review.rating", 4] }, 1, 0] } },
-                    star5: { $sum: { $cond: [{ $eq: ["$review.rating", 5] }, 1, 0] } }
-                }                
-            }
-        ])
+                            totalRevenue: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PAID] }, "$payment.totalAmount", 0] } },
+                            paidCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PAID] }, 1, 0] } },
+                            paymentPendingCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.PENDING] }, 1, 0] } },
+                            paymentCancelledCount: { $sum: { $cond: [{ $eq: ["$payment.paymentStatus", this.paymentStatuses.CANCELLED] }, 1, 0] } },
 
-        const r = statsArray[0] || {};
+                            avgRating: { $avg: "$review.rating" },
+                            ratingCount: { $sum: { $cond: [{ $gt: ["$review.rating", 0] }, 1, 0] } },
+                            star1: { $sum: { $cond: [{ $eq: ["$review.rating", 1] }, 1, 0] } },
+                            star2: { $sum: { $cond: [{ $eq: ["$review.rating", 2] }, 1, 0] } },
+                            star3: { $sum: { $cond: [{ $eq: ["$review.rating", 3] }, 1, 0] } },
+                            star4: { $sum: { $cond: [{ $eq: ["$review.rating", 4] }, 1, 0] } },
+                            star5: { $sum: { $cond: [{ $eq: ["$review.rating", 5] }, 1, 0] } }
+                        }
+                    }
+                ]);
 
-        const finalStats = {
-        total: r.total || 0,
-            byStatus: {
-                pending: r.pending || 0,
-                confirmed: r.confirmed || 0,
-                checkedIn: r.checkedIn || 0,
-                inProgress: r.inProgress || 0,
-                completed: r.completed || 0,
-                cancelled: r.cancelled || 0,
-                rescheduled: r.rescheduled || 0
+                const r = statsArray[0] || {};
+
+                const finalStats = {
+                    total: r.total || 0,
+                    byStatus: {
+                        pending: r.pending || 0,
+                        confirmed: r.confirmed || 0,
+                        checkedIn: r.checkedIn || 0,
+                        inProgress: r.inProgress || 0,
+                        completed: r.completed || 0,
+                        cancelled: r.cancelled || 0,
+                        rescheduled: r.rescheduled || 0
+                    },
+                    byType: {
+                        inPerson: r.inPerson || 0,
+                        telemedicine: r.telemedicine || 0,
+                        followUp: r.followUp || 0,
+                        emergency: r.emergency || 0,
+                        consultation: r.consultation || 0
+                    },
+                    payment: {
+                        totalRevenue: r.totalRevenue || 0,
+                        paid: r.paidCount || 0,
+                        pending: r.paymentPendingCount || 0,
+                        cancelled: r.paymentCancelledCount || 0
+                    },
+                    ratings: {
+                        average: Number((r.avgRating || 0).toFixed(2)),
+                        total: r.ratingCount || 0,
+                        breakdown: { 1: r.star1 || 0, 2: r.star2 || 0, 3: r.star3 || 0, 4: r.star4 || 0, 5: r.star5 || 0 }
+                    }
+                };
+
+                const calculateRate = (val) => finalStats.total > 0 ? Number(((val / finalStats.total) * 100).toFixed(2)) : 0;
+
+                finalStats.completionRate = calculateRate(finalStats.byStatus.completed);
+                finalStats.cancellationRate = calculateRate(finalStats.byStatus.cancelled);
+
+                return { finalStats, period };
             },
-            byType: {
-                inPerson: r.inPerson || 0,
-                telemedicine: r.telemedicine || 0,
-                followUp: r.followUp || 0,
-                emergency: r.emergency || 0,
-                consultation: r.consultation || 0
-            },
-            payment: {
-                totalRevenue: r.totalRevenue || 0,
-                paid: r.paidCount || 0,
-                pending: r.paymentPendingCount || 0,
-                cancelled: r.paymentCancelledCount || 0
-            },
-            ratings: {
-                average: Number((r.avgRating || 0).toFixed(2)),
-                total: r.ratingCount || 0,
-                breakdown: { 1: r.star1 || 0, 2: r.star2 || 0, 3: r.star3 || 0, 4: r.star4 || 0, 5: r.star5 || 0 }
-            }
-        };
-
-        const calculateRate = (val) => finalStats.total > 0 ? Number(((val / finalStats.total) * 100).toFixed(2)) : 0 ;
-
-        finalStats.completionRate = calculateRate(finalStats.byStatus.completed);
-        finalStats.cancellationRate = calculateRate(finalStats.byStatus.cancelled);
-
-        return { finalStats , period };
+            appointmentCache.ttl.statistics
+        );
     }
 
     async searchAppointments(user, userRole, searchTerm, options = {}) {
@@ -419,41 +485,49 @@ class AppointmentService {
     }
 
     async getTodayAppointments(doctorId) {
-        const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
-        const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
+        const cacheKey = appointmentCache.getTodayAppointmentsKey({ doctorId });
 
-        const query = { 
-            doctor: doctorId, 
-            scheduledDate: { $gte: todayStart, $lt: todayEnd }, 
-            status: { $nin: [this.statuses.CANCELLED] } 
-        };
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+                const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
 
-        const appointments = await Appointment.find(query)
-            .sort({ scheduledDate: 1, 'scheduledTime.startTime': 1 })
-            .lean()
-            .populate([{ path: 'patient', select: 'firstName lastName phone email dateOfBirth address gender age' }]); 
+                const query = {
+                    doctor: doctorId,
+                    scheduledDate: { $gte: todayStart, $lt: todayEnd },
+                    status: { $nin: [this.statuses.CANCELLED] }
+                };
 
-        const grouped = appointments.reduce((acc, apt) => {
-            if (acc[apt.status]) acc[apt.status].push(apt);
-            return acc;
-        }, { 
-            [this.statuses.PENDING]: [], 
-            [this.statuses.CONFIRMED]: [], 
-            [this.statuses.CHECKEDIN]: [], 
-            [this.statuses.INPROGRESS]: [], 
-            [this.statuses.COMPLETED]: [] 
-        });
+                const appointments = await Appointment.find(query)
+                    .sort({ scheduledDate: 1, 'scheduledTime.startTime': 1 })
+                    .lean()
+                    .populate([{ path: 'patient', select: 'firstName lastName phone email dateOfBirth address gender age' }]);
 
-        return {
-            data: {
-                summary: {
-                    totalToday: appointments.length,
-                    remaining: grouped[this.statuses.PENDING].length + grouped[this.statuses.CONFIRMED].length + grouped[this.statuses.CHECKEDIN].length,
-                    done: grouped[this.statuses.COMPLETED].length
-                },
-                grouped
-            }
-        };
+                const grouped = appointments.reduce((acc, apt) => {
+                    if (acc[apt.status]) acc[apt.status].push(apt);
+                    return acc;
+                }, {
+                    [this.statuses.PENDING]: [],
+                    [this.statuses.CONFIRMED]: [],
+                    [this.statuses.CHECKEDIN]: [],
+                    [this.statuses.INPROGRESS]: [],
+                    [this.statuses.COMPLETED]: []
+                });
+
+                return {
+                    data: {
+                        summary: {
+                            totalToday: appointments.length,
+                            remaining: grouped[this.statuses.PENDING].length + grouped[this.statuses.CONFIRMED].length + grouped[this.statuses.CHECKEDIN].length,
+                            done: grouped[this.statuses.COMPLETED].length
+                        },
+                        grouped
+                    }
+                };
+            },
+            appointmentCache.ttl.today
+        );
     }
 
     async getUpcomingAppointments(userId, role, options) {
@@ -602,6 +676,15 @@ class AppointmentService {
                 return appointment;
             });
 
+            const resolvedDoctorId = result?.doctor?._id || result?.doctor;
+            const resolvedPatientId = result?.patient?._id || result?.patient;
+
+            await this.clearAppointmentCaches({
+                appointmentId,
+                doctorId: resolvedDoctorId,
+                patientId: resolvedPatientId
+            });
+
             return result;
         } catch (error) {
             logger.error('Error rescheduling appointment', { error, appointmentId, userId });
@@ -613,6 +696,7 @@ class AppointmentService {
     
     async cancelAppointment(appointmentId, userId, role, reason) {
         const session = await mongoose.startSession();
+        let cacheContext = null;
 
         try {
 
@@ -623,6 +707,10 @@ class AppointmentService {
                 };
                 const appointment = await Appointment.findOne(query).session(session);
                 if (!appointment) throw new AppError(404, 'NOT_FOUND', 'Appointment not found');
+                cacheContext = {
+                    doctorId: appointment.doctor,
+                    patientId: appointment.patient
+                };
 
                 const patientId = role === ROLE.PATIENT ? userId : appointment.patient;
                 const patient = await Patient.findById(patientId).session(session);
@@ -656,6 +744,12 @@ class AppointmentService {
                         refundId: refundDetails.refundId
                     } : { status: 'NONE', amount: 0 }   
                 };                
+            });
+
+            await this.clearAppointmentCaches({
+                appointmentId,
+                doctorId: cacheContext?.doctorId,
+                patientId: cacheContext?.patientId
             });
 
             return result;
@@ -714,6 +808,12 @@ class AppointmentService {
         };
 
         await appointment.save();
+
+        await this.clearAppointmentCaches({
+            appointmentId,
+            doctorId: appointment.doctor,
+            patientId: appointment.patient
+        });
 
         return appointment;
     }
@@ -778,6 +878,12 @@ class AppointmentService {
 
         await appointment.save();
 
+        await this.clearAppointmentCaches({
+            appointmentId,
+            doctorId: appointment.doctor,
+            patientId: appointment.patient
+        });
+
         logger.info('Appointment status updated', {
             appointmentId,
             previousStatus,
@@ -789,89 +895,101 @@ class AppointmentService {
     }
 
     async generatePatientBrief(appointmentId, doctorId) {
-        const appointment = await Appointment.findById(appointmentId)
-            .populate('patient', 'firstName lastName dateOfBirth gender bloodType medicalProfile age');
+        const cacheKey = appointmentCache.getPatientBriefKey({ appointmentId, doctorId });
 
-        if (!appointment) {
-            throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found');
-        }
+        return cacheService.getOrSetCache(
+            cacheKey,
+            async () => {
+                const appointment = await Appointment.findById(appointmentId)
+                    .populate('patient', 'firstName lastName dateOfBirth gender bloodType medicalProfile age');
 
-        if (appointment.doctor.toString() !== doctorId.toString()) {
-            throw new AppError(403, HTTP_STATUS_TEXT.FORBIDDEN, 'You are not assigned to this appointment');
-        }
-
-        if (![this.statuses.CHECKEDIN, this.statuses.INPROGRESS].includes(appointment.status)) {
-            throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'Brief is available only for checked-in or in-progress appointments');
-        }
-
-        if (appointment.patientBrief?.content) {
-           appointment.patientBrief = {}; 
-        }
-
-        const patientId = appointment.patient?._id || appointment.patient;
-
-        const [patientProfile, latestRecords] = await Promise.all([
-            Patient.findById(patientId)
-                .select('firstName lastName gender bloodType medicalProfile dateOfBirth age maritalStatus ')
-                .lean(),
-            MedicalRecord.find({ patientId })
-                .sort({ visitDate: -1 })
-                .limit(3)
-                .select('visitDate aiSummary doctorNotes')
-                .lean()
-        ]);
-
-        const prompt = AppointmentHelpers.buildPatientBriefPrompt(patientProfile, appointment, latestRecords);
-
-        if (!config.grokApiKey) {
-            throw new AppError(500, HTTP_STATUS_TEXT.ERROR, 'Grok API key not configured');
-        }
-
-        let aiContent;
-        try {
-            const response = await axios.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    model: "llama-3.3-70b-versatile",
-                    messages: [{ role: 'user', content: prompt }],
-                    temperature: 0.3,
-                    top_p: 0.8,
-                    max_tokens: 800
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.grokApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 60000
+                if (!appointment) {
+                    throw new AppError(404, HTTP_STATUS_TEXT.NOT_FOUND, 'Appointment not found');
                 }
-            );
-            const content = response.data.choices[0].message.content;
-            try {
-                aiContent = JSON.parse(content);
-            } catch (parseError) {
-                logger.error('Error parsing JSON response:', parseError);
-                throw new AppError(500, HTTP_STATUS_TEXT.ERROR, 'Failed to parse AI response');
-            }
-        } catch (error) {
-            if (error instanceof SyntaxError) {
-                throw new AppError(502, HTTP_STATUS_TEXT.ERROR, 'Failed to parse AI response');
-            }
-            throw new AppError(502, HTTP_STATUS_TEXT.ERROR, 'Failed to generate patient brief');
-        }
 
-        appointment.patientBrief = {
-            content: aiContent,
-            generatedAt: new Date(),
-            generatedBy: doctorId
-        };
+                if (appointment.doctor.toString() !== doctorId.toString()) {
+                    throw new AppError(403, HTTP_STATUS_TEXT.FORBIDDEN, 'You are not assigned to this appointment');
+                }
 
-        await appointment.save();
+                if (![this.statuses.CHECKEDIN, this.statuses.INPROGRESS].includes(appointment.status)) {
+                    throw new AppError(400, HTTP_STATUS_TEXT.BAD_REQUEST, 'Brief is available only for checked-in or in-progress appointments');
+                }
 
-        return {
-            brief: aiContent,
-            generatedAt: appointment.patientBrief.generatedAt
-        };
+                if (appointment.patientBrief?.content) {
+                    return {
+                        brief: appointment.patientBrief.content,
+                        generatedAt: appointment.patientBrief.generatedAt
+                    };
+                }
+
+                const patientId = appointment.patient?._id || appointment.patient;
+
+                const [patientProfile, latestRecords] = await Promise.all([
+                    Patient.findById(patientId)
+                        .select('firstName lastName gender bloodType medicalProfile dateOfBirth age maritalStatus ')
+                        .lean(),
+                    MedicalRecord.find({ patientId })
+                        .sort({ visitDate: -1 })
+                        .limit(3)
+                        .select('visitDate aiSummary doctorNotes')
+                        .lean()
+                ]);
+
+                const prompt = AppointmentHelpers.buildPatientBriefPrompt(patientProfile, appointment, latestRecords);
+
+                if (!config.grokApiKey) {
+                    throw new AppError(500, HTTP_STATUS_TEXT.ERROR, 'Grok API key not configured');
+                }
+
+                let aiContent;
+                try {
+                    const response = await axios.post(
+                        'https://api.groq.com/openai/v1/chat/completions',
+                        {
+                            model: 'llama-3.3-70b-versatile',
+                            messages: [{ role: 'user', content: prompt }],
+                            temperature: 0.3,
+                            top_p: 0.8,
+                            max_tokens: 800
+                        },
+                        {
+                            headers: {
+                                Authorization: `Bearer ${config.grokApiKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            timeout: 60000
+                        }
+                    );
+
+                    const content = response.data.choices[0].message.content;
+                    try {
+                        aiContent = JSON.parse(content);
+                    } catch (parseError) {
+                        logger.error('Error parsing JSON response:', parseError);
+                        throw new AppError(500, HTTP_STATUS_TEXT.ERROR, 'Failed to parse AI response');
+                    }
+                } catch (error) {
+                    if (error instanceof SyntaxError) {
+                        throw new AppError(502, HTTP_STATUS_TEXT.ERROR, 'Failed to parse AI response');
+                    }
+                    throw new AppError(502, HTTP_STATUS_TEXT.ERROR, 'Failed to generate patient brief');
+                }
+
+                appointment.patientBrief = {
+                    content: aiContent,
+                    generatedAt: new Date(),
+                    generatedBy: doctorId
+                };
+
+                await appointment.save();
+
+                return {
+                    brief: aiContent,
+                    generatedAt: appointment.patientBrief.generatedAt
+                };
+            },
+            appointmentCache.ttl.patientBrief
+        );
     }
 }
 

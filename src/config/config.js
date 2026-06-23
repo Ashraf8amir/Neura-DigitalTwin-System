@@ -37,6 +37,9 @@ const config = {
     paymobIframeId: process.env.PAYMOB_IFRAME_ID,
     paymobHmacSecret: process.env.PAYMOB_HMAC_SECRET,
 
+    redisUrl: process.env.REDIS_URL,
+    redisPrefix: process.env.REDIS_PREFIX,
+    redisDefaultTTLSeconds: Number(process.env.REDIS_DEFAULT_TTL_SECONDS) || 3600,
 
     assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY,
     openRouterApiKey: process.env.OPENROUTER_API_KEY,
@@ -46,7 +49,7 @@ const config = {
     groqApiKey: process.env.GROQ_API_KEY,
     grokApiKey: process.env.GROQ_API_KEY,
     agoraAppId: process.env.AGORA_APP_ID,
-    agoraAppCertificate: process.env.AGORA_APP_CERTIFICATE,
+    agoraAppCertificate: process.env.AGORA_APP_CERTIFICATE
 };
 
 module.exports = config;

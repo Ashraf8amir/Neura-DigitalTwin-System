@@ -2,6 +2,7 @@ const http = require('http');
 const app = require('./src/app.js');
 const config = require('./src/config/config.js');
 const connectDB = require('./src/config/database.js');
+const { connectRedis, disconnectRedis } = require('./src/config/redis.config.js');
 const logger = require('./src/core/logger.js');
 const initJobs = require('./src/jobs');
 const { initializeSocket, getIO } = require('./src/socket');
@@ -30,8 +31,7 @@ const gracefulShutdown = (signal) => {
             }
             
             logger.info('HTTP server closed.');
-            
-            process.exit(0);
+            disconnectRedis().finally(() => process.exit(0));
         });
 
         setTimeout(() => {
@@ -39,7 +39,7 @@ const gracefulShutdown = (signal) => {
             process.exit(1);
         }, 30000);
     } else {
-        process.exit(0);
+        disconnectRedis().finally(() => process.exit(0));
     }
 };
 
@@ -84,6 +84,9 @@ const startServer = async () => {
         logger.info('Connecting to MongoDB...', { url: config.mongoURL.replace(/\/\/.*:.*@/, '//***:***@') });
         await connectDB(config.mongoURL);
         logger.info('MongoDB connected successfully');
+        
+        logger.info('Connecting to Redis cache...');
+        await connectRedis();
 
         logger.info('Initializing scheduled jobs...');
         initJobs();
